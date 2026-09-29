@@ -11,17 +11,29 @@ spring:
     hibernate:
       # Schema dikelola Flyway; Hibernate hanya memvalidasi kesesuaian entity dengan schema.
       ddl-auto: validate
+    properties:
+      hibernate:
+        # Entity dipetakan ke schema milik environment (production/develop/public).
+        default_schema: ${DB_SCHEMA:public}
   flyway:
     locations: classpath:db/migration
+    # Setiap environment memakai schema sendiri di database yang sama.
+    # Schema dibuat otomatis bila belum ada (user DB membutuhkan hak CREATE pada database).
+    schemas: ${DB_SCHEMA:public}
+    default-schema: ${DB_SCHEMA:public}
+    create-schemas: true
 
-# Konfigurasi dua pool koneksi (lihat DataSourceConfig di Afl3Application.kt).
-# Properti di bawah rw/ro di-bind langsung ke HikariDataSource.
 app:
+  # Nama environment yang sedang berjalan (local/develop/production); ditampilkan di /system/status.
+  environment: ${APP_ENV:local}
+  # Konfigurasi dua pool koneksi (lihat config/DataSourceConfig.kt).
+  # Properti di bawah rw/ro di-bind langsung ke HikariDataSource.
   datasource:
     rw:
       jdbc-url: ${DB_RW_URL}
       username: ${DB_RW_USERNAME}
       password: ${DB_RW_PASSWORD}
+      schema: ${DB_SCHEMA:public}
       pool-name: afl3-rw
       maximum-pool-size: ${DB_RW_POOL_SIZE:10}
     ro:
@@ -29,14 +41,16 @@ app:
       jdbc-url: ${DB_RO_URL:${DB_RW_URL}}
       username: ${DB_RO_USERNAME:${DB_RW_USERNAME}}
       password: ${DB_RO_PASSWORD:${DB_RW_PASSWORD}}
+      schema: ${DB_SCHEMA:public}
       pool-name: afl3-ro
       maximum-pool-size: ${DB_RO_POOL_SIZE:10}
       read-only: true
 
 server:
   port: ${SERVER_PORT:8080}
-  # Memproses header X-Forwarded-* dari reverse proxy (Traefik).
-  forward-headers-strategy: native
+  # Memproses header X-Forwarded-* dari Traefik, termasuk X-Forwarded-Prefix (/production, /develop)
+  # yang dikirim middleware StripPrefix, sehingga URL yang dibentuk aplikasi tetap menyertakan prefix.
+  forward-headers-strategy: framework
 
 management:
   endpoints:

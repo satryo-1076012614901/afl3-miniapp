@@ -40,4 +40,6 @@ out/
 
 ### Secrets / konfigurasi lokal ###
 .env
+.env.*
+!.env.example
 cred_db.md

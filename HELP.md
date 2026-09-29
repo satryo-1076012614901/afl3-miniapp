@@ -16,6 +16,29 @@ Backend REST API untuk aplikasi Android **Mini Competition Manager**, yaitu peng
 | Database | PostgreSQL 16 (server: 16.14, endpoint read-write dan read-only terpisah) |
 | Build | Gradle 9.7.1 (wrapper) |
 
+## Struktur package (MVC)
+
+```plain
+src/main/kotlin/ac/sfj/afl3/
+├── Afl3Application.kt
+├── config/         # Konfigurasi (DataSourceConfig: routing RW/RO)
+├── controller/     # REST endpoint
+├── service/        # Business logic dan batas transaksi
+├── repository/     # Akses data
+├── domain/         # Entity dan model
+├── dto/            # Objek request/response
+└── exception/      # Global exception handler dan exception aplikasi
+```
+
+Aturan antar-layer:
+
+- `controller` hanya memanggil `service` dan mengembalikan `dto`; controller tidak mengakses `repository` secara langsung.
+- `service` menentukan batas transaksi (`@Transactional` / `@Transactional(readOnly = true)`), sehingga service juga menentukan pool RW atau RO yang dipakai.
+- Entity JPA tidak dikembalikan langsung ke client; petakan ke `dto` di service.
+- Error dilempar sebagai exception (mis. `ResourceNotFoundException`) dan diubah menjadi response `ProblemDetail` (RFC 9457) oleh `GlobalExceptionHandler`.
+
+Setiap modul menambahkan file pada layer yang sesuai, misalnya `controller/CompetitionController.kt`, `service/CompetitionService.kt`, `repository/CompetitionRepository.kt`, `domain/Competition.kt`, dan `dto/CompetitionDto.kt`.
+
 ## Prasyarat
 
 - JDK 25
@@ -23,12 +46,15 @@ Backend REST API untuk aplikasi Android **Mini Competition Manager**, yaitu peng
 
 ## Konfigurasi environment
 
-Seluruh konfigurasi koneksi dibaca dari environment variable. Untuk development lokal, nilainya disimpan di file `.env` di root project. File ini **tidak di-commit**.
+Seluruh konfigurasi dibaca dari environment variable.
 
-`.env` dipakai oleh dua pihak:
+| File | Dipakai untuk | Di-commit |
+|---|---|---|
+| `.env` | Development lokal (`compose.local.yml` dan run dari IDE/Gradle) | Tidak |
+| `.env.production` | Deploy `/production` di server (`compose.server.yml`) | Tidak |
+| `.env.develop` | Deploy `/develop` di server (`compose.server.yml`) | Tidak |
 
-1. `docker compose`: interpolasi variabel pada `compose.local.yml`.
-2. Spring Boot saat dijalankan dari IDE/Gradle, melalui `spring.config.import: optional:file:.env[.properties]`. Environment variable yang di-set langsung (container, CI) selalu lebih diprioritaskan daripada isi `.env`.
+Saat dijalankan dari IDE/Gradle, Spring Boot membaca `.env` melalui `spring.config.import: optional:file:.env[.properties]`. Environment variable yang di-set langsung (container, CI) selalu lebih diprioritaskan daripada isi `.env`.
 
 | Variabel | Wajib | Keterangan |
 |---|---|---|
@@ -38,11 +64,14 @@ Seluruh konfigurasi koneksi dibaca dari environment variable. Untuk development 
 | `DB_RO_URL` | Tidak | JDBC URL endpoint read-only; jika tidak didefinisikan, memakai `DB_RW_URL` |
 | `DB_RO_USERNAME` | Tidak | Jika tidak didefinisikan, memakai `DB_RW_USERNAME` |
 | `DB_RO_PASSWORD` | Tidak | Jika tidak didefinisikan, memakai `DB_RW_PASSWORD` |
+| `DB_SCHEMA` | Tidak | Schema PostgreSQL milik environment, default `public`. Server: `production` / `develop` |
 | `DB_RW_POOL_SIZE` / `DB_RO_POOL_SIZE` | Tidak | Ukuran pool Hikari, default `10` |
+| `APP_ENV` | Tidak | Nama environment (`local`, `develop`, `production`), default `local` |
 | `SERVER_PORT` | Tidak | Port HTTP aplikasi, default `8080` |
-| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | Ya (compose) | Database, user, dan password PostgreSQL lokal |
+| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | Ya (compose lokal) | Database, user, dan password PostgreSQL lokal |
 | `POSTGRES_PORT` | Tidak | Port PostgreSQL lokal di host, default `5432` |
-| `APP_PORT` | Tidak | Port aplikasi di host saat dijalankan via compose, default `8080` |
+| `APP_PORT` | Tidak | Port aplikasi di host saat dijalankan via compose lokal, default `8080` |
+| `COMPOSE_PROJECT_NAME`, `API_HOST`, `APP_IMAGE` | Ya (server) | Nama project compose, host Traefik, dan image GHCR (lihat *Deploy ke server*) |
 
 Variabel opsional yang ditulis dengan nilai kosong (mis. `DB_RO_URL=`) dianggap bernilai string kosong, bukan tidak didefinisikan. Untuk memakai nilai default, hapus atau jadikan komentar baris tersebut.
 
@@ -63,7 +92,7 @@ DB_RO_USERNAME=miniapp
 DB_RO_PASSWORD=miniapp_local
 ```
 
-Kredensial database server **tidak** disimpan di repository. Nilainya hanya dipakai sebagai secret pada proses deploy.
+Kredensial database server **tidak** disimpan di repository.
 
 ## Menjalankan secara lokal
 
@@ -89,12 +118,52 @@ Pada compose lokal, `MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS=always` di-set sehi
 
 ```bash
 curl http://localhost:8080/actuator/health
+curl http://localhost:8080/system/status
 docker compose -f compose.local.yml down      # tambahkan -v untuk menghapus data PostgreSQL lokal
 ```
 
 ### Test
 
 `./gradlew test` menjalankan `contextLoads()` yang membutuhkan koneksi database. Pastikan PostgreSQL lokal sudah berjalan (langkah pertama Opsi A).
+
+## Endpoint uji coba
+
+`GET /system/status` memastikan aplikasi berjalan dan kedua endpoint database dapat diakses. Pengecekan read-write dijalankan dalam transaksi biasa (pool RW), sedangkan pengecekan read-only dijalankan dalam transaksi `readOnly = true` (pool RO).
+
+| Environment | URL |
+|---|---|
+| Lokal | `http://localhost:8080/system/status` |
+| Develop | `https://api.vispro.satryo.pro/develop/system/status` |
+| Production | `https://api.vispro.satryo.pro/production/system/status` |
+
+- HTTP `200` bila `status` = `UP` (RW dan RO dapat diakses).
+- HTTP `503` bila salah satu `DOWN`. Field `error` hanya berisi nama kelas penyebab; detail lengkap ada di log aplikasi.
+
+Contoh response (nilai bervariasi):
+
+```json
+{
+  "status": "UP",
+  "application": "afl3",
+  "environment": "production",
+  "timestamp": "2026-09-29T13:00:00Z",
+  "database": {
+    "readWrite": {
+      "status": "UP", "latencyMs": 4, "database": "miniapp_db", "schema": "production",
+      "serverVersion": "16.14", "readOnlyTransaction": false, "inRecovery": false, "error": null
+    },
+    "readOnly": {
+      "status": "UP", "latencyMs": 5, "database": "miniapp_db", "schema": "production",
+      "serverVersion": "16.14", "readOnlyTransaction": true, "inRecovery": true, "error": null
+    }
+  }
+}
+```
+
+Cara membaca hasil pengecekan RO:
+
+- `readOnlyTransaction: true` pada `readOnly` membuktikan transaksi read-only benar-benar diarahkan ke pool RO.
+- `inRecovery: true` berarti endpoint RO adalah replika (hot standby). Jika `false`, endpoint RO sebenarnya server primary.
 
 ## Docker image
 
@@ -118,9 +187,42 @@ docker run --rm -p 8080:8080 \
   afl3:local
 ```
 
+## Deploy ke server
+
+Node deploy menjalankan Traefik v3.7 (entrypoint `websecure`, certResolver `letsencrypt`, network eksternal `traefik`). Kedua environment berjalan di node yang sama dan dipisahkan berdasarkan path:
+
+| Environment | URL dasar | Schema DB | File env | Project compose |
+|---|---|---|---|---|
+| Production | `https://api.vispro.satryo.pro/production` | `production` | `.env.production` | `afl3-production` |
+| Develop (development bersama) | `https://api.vispro.satryo.pro/develop` | `develop` | `.env.develop` | `afl3-develop` |
+
+Mekanisme routing:
+
+1. Router Traefik `afl3-<env>` mencocokkan `Host(api.vispro.satryo.pro) && PathPrefix(/<env>)`.
+2. Middleware `StripPrefix` melepas `/<env>` sebelum request diteruskan ke container, sehingga aplikasi selalu melayani path yang sama (`/system/status`, `/actuator/health`, dst.).
+3. Traefik mengirim header `X-Forwarded-Prefix: /<env>`. Aplikasi memakai `server.forward-headers-strategy: framework`, sehingga URL yang dibentuk aplikasi tetap menyertakan prefix.
+
+Kedua environment memakai satu file `compose.server.yml`. Environment dipilih melalui file env dan nama project:
+
+```bash
+docker compose -p afl3-production --env-file .env.production -f compose.server.yml up -d
+docker compose -p afl3-develop    --env-file .env.develop    -f compose.server.yml up -d
+```
+
+Nama project (`-p` dan `COMPOSE_PROJECT_NAME`) wajib berbeda per environment. Jika sama, menjalankan salah satu environment akan menimpa container environment lainnya.
+
+Persiapan sebelum deploy pertama:
+
+- `APP_IMAGE` di `.env.production` dan `.env.develop` menunjuk ke `ghcr.io/satryo-1076012614901/afl3-miniapp` dengan tag `:production` dan `:develop`.
+- Jika package GHCR bersifat private, login di node: `docker login ghcr.io`.
+- Pastikan network `traefik` sudah ada di node.
+- User database membutuhkan hak membuat schema pada `miniapp_db` (Flyway membuat schema `production` dan `develop` saat start pertama), misalnya `GRANT CREATE ON DATABASE miniapp_db TO <user>;` bila user tersebut bukan owner database.
+
+Container tidak mem-publish port ke host; seluruh akses melalui Traefik. Traefik hanya meneruskan trafik ke container yang berstatus `healthy`.
+
 ## Routing koneksi read-write / read-only
 
-Aplikasi memiliki dua pool koneksi (`afl3-rw` dan `afl3-ro`) di belakang `LazyConnectionDataSourceProxy` (lihat `DataSourceConfig` di `Afl3Application.kt`). Pool dipilih berdasarkan sifat transaksi:
+Aplikasi memiliki dua pool koneksi (`afl3-rw` dan `afl3-ro`) di belakang `LazyConnectionDataSourceProxy` (lihat `config/DataSourceConfig.kt`). Pool dipilih berdasarkan sifat transaksi:
 
 | Konteks pemanggilan | Pool |
 |---|---|
@@ -140,6 +242,8 @@ Aturan untuk seluruh modul:
 ## Migrasi database (Flyway)
 
 - Lokasi migration: `src/main/resources/db/migration`, dengan format nama `V<versi>__<deskripsi>.sql`.
+- Setiap environment memakai schema sendiri (`DB_SCHEMA`) dengan riwayat Flyway (`flyway_schema_history`) masing-masing. Hibernate memetakan entity ke schema yang sama melalui `hibernate.default_schema`.
+- Tulis migration **tanpa** prefix schema (mis. `CREATE TABLE competition ...`, bukan `CREATE TABLE production.competition ...`), agar migration yang sama berlaku untuk semua environment.
 - `spring.jpa.hibernate.ddl-auto: validate`: schema **hanya** diubah melalui migration. Aplikasi gagal start jika entity tidak sesuai dengan schema.
 - Migration yang sudah di-merge ke `main` tidak boleh diubah. Perubahan schema dilakukan dengan migration baru.
 - Jika tabel suatu modul mereferensikan tabel modul lain (foreign key), migration modul yang direferensikan harus di-merge lebih dulu.
@@ -147,10 +251,16 @@ Aturan untuk seluruh modul:
 
 ## Alur kerja Git dan deploy
 
-- Setiap anggota mengembangkan modulnya di branch masing-masing, kemudian mengajukan merge request.
-- Deploy hanya dilakukan dari branch `deploy` dan `main`.
-- Deploy menggunakan GitHub Actions + Docker ke node standalone (Ubuntu 24.04) yang menjalankan Traefik v3.7 pada network `traefik`. Image disimpan di GHCR.
-- Aplikasi memakai `server.forward-headers-strategy: native` sehingga header `X-Forwarded-*` dari Traefik diproses dengan benar.
+Langkah kerja lengkap untuk tim ada di [`README.md`](README.md). Ringkasnya:
+
+| Branch | Peran | Deploy | Tag image |
+|---|---|---|---|
+| `feature/<modul>` | Pengembangan modul oleh tiap anggota | — | — |
+| `main` | Integrasi; menerima PR dari `feature/<modul>` (minimal 1 approval anggota lain) | `/develop` | `:develop` |
+| `deploy` | Rilis; menerima PR dari `main` | `/production` | `:production` |
+
+- Deploy hanya dilakukan dari branch `main` dan `deploy`.
+- Deploy menggunakan GitHub Actions + Docker ke node standalone (Ubuntu 24.04). Image disimpan di GHCR.
 
 ## Belum tersedia
 

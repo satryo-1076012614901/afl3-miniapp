@@ -7,8 +7,9 @@
 # Database + aplikasi (image aplikasi di-build dari Dockerfile):
 #   docker compose -f compose.local.yml up -d --build
 #
-# Healthcheck aplikasi:
+# Healthcheck aplikasi dan endpoint uji coba:
 #   curl http://localhost:8080/actuator/health
+#   curl http://localhost:8080/system/status
 #
 # Menghentikan (tambahkan -v untuk menghapus data PostgreSQL lokal):
 #   docker compose -f compose.local.yml down

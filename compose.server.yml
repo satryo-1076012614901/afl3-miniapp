@@ -1,0 +1,49 @@
+# Deploy di node server, di belakang Traefik v3.7 (network eksternal `traefik`).
+#
+# Satu file dipakai untuk dua environment. Environment dipilih lewat --env-file dan nama project:
+#   docker compose -p afl3-production --env-file .env.production -f compose.server.yml up -d
+#   docker compose -p afl3-develop    --env-file .env.develop    -f compose.server.yml up -d
+#
+# Routing Traefik:
+#   https://${API_HOST}/${APP_ENV}/...  ->  container app port 8080
+#   Prefix /${APP_ENV} dilepas oleh middleware StripPrefix sebelum diteruskan ke aplikasi.
+#
+# Uji coba:
+#   curl https://${API_HOST}/${APP_ENV}/system/status
+
+services:
+  app:
+    image: ${APP_IMAGE:?APP_IMAGE belum di-set}
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:?APP_ENV belum di-set}
+      DB_SCHEMA: ${DB_SCHEMA:?DB_SCHEMA belum di-set}
+      DB_RW_URL: ${DB_RW_URL:?DB_RW_URL belum di-set}
+      DB_RW_USERNAME: ${DB_RW_USERNAME:?DB_RW_USERNAME belum di-set}
+      DB_RW_PASSWORD: ${DB_RW_PASSWORD:?DB_RW_PASSWORD belum di-set}
+      DB_RO_URL: ${DB_RO_URL:?DB_RO_URL belum di-set}
+      DB_RO_USERNAME: ${DB_RO_USERNAME:?DB_RO_USERNAME belum di-set}
+      DB_RO_PASSWORD: ${DB_RO_PASSWORD:?DB_RO_PASSWORD belum di-set}
+      DB_RW_POOL_SIZE: ${DB_RW_POOL_SIZE:-10}
+      DB_RO_POOL_SIZE: ${DB_RO_POOL_SIZE:-10}
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.afl3-${APP_ENV}.rule=Host(`${API_HOST:?API_HOST belum di-set}`) && PathPrefix(`/${APP_ENV}`)"
+      - "traefik.http.routers.afl3-${APP_ENV}.entrypoints=websecure"
+      - "traefik.http.routers.afl3-${APP_ENV}.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.afl3-${APP_ENV}.middlewares=afl3-${APP_ENV}-strip"
+      - "traefik.http.routers.afl3-${APP_ENV}.service=afl3-${APP_ENV}"
+      - "traefik.http.middlewares.afl3-${APP_ENV}-strip.stripprefix.prefixes=/${APP_ENV}"
+      - "traefik.http.services.afl3-${APP_ENV}.loadbalancer.server.port=8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  traefik:
+    external: true
