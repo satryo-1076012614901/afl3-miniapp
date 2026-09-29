@@ -76,14 +76,14 @@ docker compose -f compose.local.yml up -d postgres
 
 ### Opsi B — Database dan aplikasi di container
 
-Service `app` menjalankan `build/libs/app.jar` dengan image `eclipse-temurin:25-jre`, sehingga JAR harus di-build terlebih dahulu.
+Image aplikasi di-build dari `Dockerfile` (lihat bagian *Docker image*). Tambahkan `--build` setiap kali source berubah.
 
 ```bash
-./gradlew bootJar
-docker compose -f compose.local.yml up -d
+docker compose -f compose.local.yml up -d --build
+docker compose -f compose.local.yml ps      # kolom STATUS app harus menjadi "healthy"
 ```
 
-Setelah JAR di-build ulang, jalankan `docker compose -f compose.local.yml restart app`.
+Pada compose lokal, `MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS=always` di-set sehingga `/actuator/health` menampilkan status tiap komponen (mis. `db`).
 
 ### Pemeriksaan dan penghentian
 
@@ -95,6 +95,28 @@ docker compose -f compose.local.yml down      # tambahkan -v untuk menghapus dat
 ### Test
 
 `./gradlew test` menjalankan `contextLoads()` yang membutuhkan koneksi database. Pastikan PostgreSQL lokal sudah berjalan (langkah pertama Opsi A).
+
+## Docker image
+
+`Dockerfile` memakai dua stage:
+
+1. **build** (`eclipse-temurin:25-jdk`): menjalankan `./gradlew bootJar`. Cache Gradle disimpan di BuildKit cache mount.
+2. **runtime** (`eclipse-temurin:25-jre`): hanya berisi `app.jar`, dijalankan sebagai user non-root `spring` pada port `8080`.
+
+Build context dibatasi oleh `.dockerignore` dengan pendekatan *whitelist*: hanya `gradlew`, `gradle/`, `settings.gradle.kts`, `build.gradle.kts`, dan `src/` yang dikirim ke Docker. File seperti `.env`, `cred_db.md`, `.git`, dan `build/` tidak ikut terkirim. Jika `Dockerfile` kelak membutuhkan file lain, tambahkan pengecualian `!<path>` di `.dockerignore`.
+
+`HEALTHCHECK` memanggil `/actuator/health` setiap 10 detik (masa tunggu awal 60 detik). Container dianggap sehat bila endpoint mengembalikan HTTP 200. Status ini ikut DOWN bila database tidak terjangkau.
+
+Build dan jalankan image secara manual:
+
+```bash
+docker build -t afl3:local .
+docker run --rm -p 8080:8080 \
+  -e DB_RW_URL=jdbc:postgresql://<host>:5432/miniapp_db \
+  -e DB_RW_USERNAME=<username> \
+  -e DB_RW_PASSWORD=<password> \
+  afl3:local
+```
 
 ## Routing koneksi read-write / read-only
 
@@ -132,6 +154,5 @@ Aturan untuk seluruh modul:
 
 ## Belum tersedia
 
-- `Dockerfile` untuk image produksi.
 - Workflow GitHub Actions (`.github/workflows/`).
 - Migration awal serta kode modul Competition, Participant, dan Match.

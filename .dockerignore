@@ -1,0 +1,10 @@
+# Build context memakai pendekatan whitelist:
+# semua file diabaikan, kecuali yang memang di-COPY oleh Dockerfile.
+# Jika Dockerfile membutuhkan file baru (mis. gradle.properties), tambahkan pengecualian "!<path>" di bawah.
+*
+
+!gradlew
+!gradle
+!settings.gradle.kts
+!build.gradle.kts
+!src
