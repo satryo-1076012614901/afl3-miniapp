@@ -1,0 +1,60 @@
+# Lingkungan development lokal: PostgreSQL 16 + aplikasi.
+# Variabel dibaca otomatis dari file .env di folder yang sama.
+#
+# Hanya database (aplikasi dijalankan dari IDE/Gradle):
+#   docker compose -f compose.local.yml up -d postgres
+#
+# Database + aplikasi (JAR harus di-build terlebih dahulu):
+#   ./gradlew bootJar
+#   docker compose -f compose.local.yml up -d
+#
+# Menghentikan (tambahkan -v untuk menghapus data PostgreSQL lokal):
+#   docker compose -f compose.local.yml down
+name: afl3-local
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB belum di-set di .env}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER belum di-set di .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD belum di-set di .env}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    # Belum ada Dockerfile: JAR hasil `./gradlew bootJar` dijalankan langsung di image JRE 25.
+    image: eclipse-temurin:25-jre
+    working_dir: /app
+    command: ["java", "-jar", "/app/app.jar"]
+    environment:
+      DB_RW_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      DB_RW_USERNAME: ${POSTGRES_USER}
+      DB_RW_PASSWORD: ${POSTGRES_PASSWORD}
+      # Lokal hanya ada satu instance PostgreSQL; pool RO diarahkan ke instance yang sama.
+      DB_RO_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      DB_RO_USERNAME: ${POSTGRES_USER}
+      DB_RO_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      - type: bind
+        source: ./build/libs/app.jar
+        target: /app/app.jar
+        read_only: true
+        bind:
+          # Gagal dengan jelas jika JAR belum di-build (tidak membuat folder kosong di host).
+          create_host_path: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

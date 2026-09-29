@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: afl3
+  config:
+    # Saat dijalankan dari IDE/Gradle, variabel dibaca dari file .env di root project (jika ada).
+    # Environment variable yang di-set langsung (container/CI) tetap lebih diprioritaskan.
+    import: optional:file:.env[.properties]
+  jpa:
+    # Mencegah koneksi tertahan sepanjang request; akses lazy relation harus selesai di service.
+    open-in-view: false
+    hibernate:
+      # Schema dikelola Flyway; Hibernate hanya memvalidasi kesesuaian entity dengan schema.
+      ddl-auto: validate
+  flyway:
+    locations: classpath:db/migration
+
+# Konfigurasi dua pool koneksi (lihat DataSourceConfig di Afl3Application.kt).
+# Properti di bawah rw/ro di-bind langsung ke HikariDataSource.
+app:
+  datasource:
+    rw:
+      jdbc-url: ${DB_RW_URL}
+      username: ${DB_RW_USERNAME}
+      password: ${DB_RW_PASSWORD}
+      pool-name: afl3-rw
+      maximum-pool-size: ${DB_RW_POOL_SIZE:10}
+    ro:
+      # Jika DB_RO_* tidak didefinisikan, memakai nilai DB_RW_*.
+      jdbc-url: ${DB_RO_URL:${DB_RW_URL}}
+      username: ${DB_RO_USERNAME:${DB_RW_USERNAME}}
+      password: ${DB_RO_PASSWORD:${DB_RW_PASSWORD}}
+      pool-name: afl3-ro
+      maximum-pool-size: ${DB_RO_POOL_SIZE:10}
+      read-only: true
+
+server:
+  port: ${SERVER_PORT:8080}
+  # Memproses header X-Forwarded-* dari reverse proxy (Traefik).
+  forward-headers-strategy: native
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
