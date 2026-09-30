@@ -12,6 +12,9 @@ Dokumen ini adalah panduan kerja tim: struktur folder, aturan penempatan kode, d
 afl3-miniapp/
 ├── README.md                 # Panduan kerja tim (dokumen ini)
 ├── HELP.md                   # Referensi teknis: env, Docker, deploy, database, Flyway
+├── .github/workflows/
+│   ├── ci.yml                # Build + test untuk setiap Pull Request ke main/deploy
+│   └── deploy.yml            # Deploy otomatis: main -> /develop, deploy -> /production
 ├── Dockerfile                # Build image aplikasi (multi-stage, JDK 25 -> JRE 25)
 ├── .dockerignore             # Whitelist file yang dikirim ke Docker saat build
 ├── compose.local.yml         # PostgreSQL 16 + aplikasi untuk development lokal
@@ -431,6 +434,7 @@ Buka GitHub, buat Pull Request dari `feature/competition` ke `main`, lalu salin 
 
 ## Checklist
 - [ ] Branch sudah di-rebase ke `main` terbaru dan tidak ada konflik
+- [ ] Workflow CI pada PR ini berhasil (tanda centang hijau)
 - [ ] `gradlew bootJar` berhasil
 - [ ] `docker compose -f compose.local.yml up -d --build` berhasil dan container app `healthy`
 - [ ] `GET /system/status` mengembalikan `UP`
@@ -444,7 +448,7 @@ Buka GitHub, buat Pull Request dari `feature/competition` ke `main`, lalu salin 
 ### Langkah 7 — Review oleh anggota lain
 
 - PR wajib mendapat **minimal 1 approval dari anggota lain**. Penulis PR tidak me-merge PR-nya sendiri tanpa approval.
-- Reviewer memeriksa kesesuaian dengan aturan layer (bagian 2), batas transaksi, migration, dan checklist. Bila perlu, reviewer menjalankan branch tersebut di lokal:
+- Reviewer memastikan workflow **CI** pada PR berhasil, lalu memeriksa kesesuaian dengan aturan layer (bagian 2), batas transaksi, migration, dan checklist. Perubahan pada `.github/workflows/` harus di-review dengan sangat teliti karena workflow deploy memegang akses SSH ke server dan password database. Bila perlu, reviewer menjalankan branch tersebut di lokal:
   ```powershell
   git fetch origin
   git switch feature/competition
@@ -466,7 +470,7 @@ Buka GitHub, buat Pull Request dari `feature/competition` ke `main`, lalu salin 
 2. Setelah mendapat approval, PR di-merge; `deploy` di-deploy ke production.
 3. Verifikasi `https://api.vispro.satryo.pro/production/system/status` dan endpoint yang dirilis.
 
-> Deploy otomatis pada Langkah 8 dan 9 berlaku setelah workflow GitHub Actions tersedia. Sebelum itu, deploy dilakukan manual oleh pemilik repository sesuai bagian *Deploy ke server* di [`HELP.md`](HELP.md).
+> Deploy pada Langkah 8 dan 9 berjalan otomatis melalui workflow **Deploy** (tab *Actions* di GitHub): test → build image → deploy di server → smoke test `/system/status`. Jika job **Test** atau **Build** gagal, tidak ada yang di-deploy dan versi sebelumnya tetap berjalan. Jika job **Deploy** gagal, container lama sudah diganti oleh container baru yang tidak sehat, sehingga environment tersebut perlu segera diperbaiki atau di-rollback. Detail di bagian *CI/CD* pada [`HELP.md`](HELP.md).
 
 ### Ringkasan alur
 

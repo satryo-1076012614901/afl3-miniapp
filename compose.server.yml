@@ -1,15 +1,21 @@
 # Deploy di node server, di belakang Traefik v3.7 (network eksternal `traefik`).
 #
-# Satu file dipakai untuk dua environment. Environment dipilih lewat --env-file dan nama project:
-#   docker compose -p afl3-production --env-file .env.production -f compose.server.yml up -d
-#   docker compose -p afl3-develop    --env-file .env.develop    -f compose.server.yml up -d
+# File ini TIDAK disimpan di node. Perintah compose dijalankan dari runner GitHub (deploy.yml)
+# atau dari laptop dengan DOCKER_HOST=ssh://<node>, sehingga Docker CLI mengendalikan daemon di node via SSH.
+# Nilai variabel berasal dari environment proses: GitHub Secrets/Variables (workflow) atau --env-file (laptop).
+#
+# Deploy manual dari laptop (PowerShell), setelah `docker login ghcr.io`:
+#   $env:DOCKER_HOST = "ssh://afl3-node"
+#   docker compose -p afl3-develop    --env-file .env.develop    -f compose.server.yml up -d --wait
+#   docker compose -p afl3-production --env-file .env.production -f compose.server.yml up -d --wait
+#   Remove-Item Env:DOCKER_HOST
 #
 # Routing Traefik:
 #   https://${API_HOST}/${APP_ENV}/...  ->  container app port 8080
 #   Prefix /${APP_ENV} dilepas oleh middleware StripPrefix sebelum diteruskan ke aplikasi.
 #
-# Setiap `up -d` selalu menarik image terbaru dari GHCR (pull_policy: always),
-# sehingga node perlu login: docker login ghcr.io
+# pull_policy: always -> setiap `up -d` menarik image dari GHCR memakai kredensial milik sisi yang
+# menjalankan compose (runner/laptop); node tidak perlu login GHCR.
 #
 # Uji coba:
 #   curl https://${API_HOST}/${APP_ENV}/system/status
