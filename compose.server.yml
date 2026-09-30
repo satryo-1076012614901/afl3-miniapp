@@ -8,13 +8,23 @@
 #   https://${API_HOST}/${APP_ENV}/...  ->  container app port 8080
 #   Prefix /${APP_ENV} dilepas oleh middleware StripPrefix sebelum diteruskan ke aplikasi.
 #
+# Setiap `up -d` selalu menarik image terbaru dari GHCR (pull_policy: always),
+# sehingga node perlu login: docker login ghcr.io
+#
 # Uji coba:
 #   curl https://${API_HOST}/${APP_ENV}/system/status
 
 services:
   app:
     image: ${APP_IMAGE:?APP_IMAGE belum di-set}
+    # Tag :production / :develop bersifat mutable; tanpa ini `up -d` tetap memakai image lama di node.
+    pull_policy: always
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          # Batas memori container. JVM memakai maksimal 75% dari nilai ini sebagai heap (MaxRAMPercentage).
+          memory: ${APP_MEM_LIMIT:?APP_MEM_LIMIT belum di-set}
     environment:
       APP_ENV: ${APP_ENV:?APP_ENV belum di-set}
       DB_SCHEMA: ${DB_SCHEMA:?DB_SCHEMA belum di-set}

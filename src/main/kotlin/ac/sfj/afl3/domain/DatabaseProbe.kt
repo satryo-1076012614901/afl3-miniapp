@@ -7,7 +7,7 @@ data class DatabaseProbe(
     val databaseName: String,
     val schemaName: String?,
     val serverVersion: String,
-    /** `true` bila transaksi berjalan read-only (koneksi dari pool RO). */
+    /** `true` bila statement berjalan di dalam transaksi read-only (tidak membuktikan asal pool). */
     val readOnlyTransaction: Boolean,
     /** `true` bila server adalah replika (hot standby). */
     val inRecovery: Boolean,

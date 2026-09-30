@@ -20,6 +20,10 @@ RUN --mount=type=cache,target=/root/.gradle \
 # Stage 2 - runtime: hanya JRE 25 + app.jar
 # =====================================================================
 FROM eclipse-temurin:25-jre
+
+# Menghubungkan package GHCR ke repository GitHub (package tampil di repo dan dapat mewarisi hak aksesnya).
+LABEL org.opencontainers.image.source="https://github.com/satryo-1076012614901/afl3-miniapp"
+
 WORKDIR /app
 
 RUN groupadd --system spring && useradd --system --gid spring --no-create-home spring

@@ -18,7 +18,8 @@ spring:
   flyway:
     locations: classpath:db/migration
     # Setiap environment memakai schema sendiri di database yang sama.
-    # Schema dibuat otomatis bila belum ada (user DB membutuhkan hak CREATE pada database).
+    # Server: schema dibuat admin DB dan dimiliki role environment (lihat HELP.md).
+    # Lokal: schema dibuat otomatis oleh Flyway bila belum ada.
     schemas: ${DB_SCHEMA:public}
     default-schema: ${DB_SCHEMA:public}
     create-schemas: true

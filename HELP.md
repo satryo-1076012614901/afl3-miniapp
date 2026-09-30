@@ -50,7 +50,8 @@ Seluruh konfigurasi dibaca dari environment variable.
 
 | File | Dipakai untuk | Di-commit |
 |---|---|---|
-| `.env` | Development lokal (`compose.local.yml` dan run dari IDE/Gradle) | Tidak |
+| `.env.example` | Template `.env` lokal | Ya |
+| `.env` | Development lokal (`compose.local.yml` dan run dari IDE/Gradle), salinan dari `.env.example` | Tidak |
 | `.env.production` | Deploy `/production` di server (`compose.server.yml`) | Tidak |
 | `.env.develop` | Deploy `/develop` di server (`compose.server.yml`) | Tidak |
 
@@ -72,24 +73,14 @@ Saat dijalankan dari IDE/Gradle, Spring Boot membaca `.env` melalui `spring.conf
 | `POSTGRES_PORT` | Tidak | Port PostgreSQL lokal di host, default `5432` |
 | `APP_PORT` | Tidak | Port aplikasi di host saat dijalankan via compose lokal, default `8080` |
 | `COMPOSE_PROJECT_NAME`, `API_HOST`, `APP_IMAGE` | Ya (server) | Nama project compose, host Traefik, dan image GHCR (lihat *Deploy ke server*) |
+| `APP_MEM_LIMIT` | Ya (server) | Batas memori container, mis. `768m`. JVM memakai maksimal 75% dari nilai ini sebagai heap |
 
 Variabel opsional yang ditulis dengan nilai kosong (mis. `DB_RO_URL=`) dianggap bernilai string kosong, bukan tidak didefinisikan. Untuk memakai nilai default, hapus atau jadikan komentar baris tersebut.
 
-Template `.env` untuk development lokal (salin menjadi `.env` di root project):
+Untuk development lokal, salin template yang sudah di-commit:
 
-```dotenv
-POSTGRES_DB=miniapp_db
-POSTGRES_USER=miniapp
-POSTGRES_PASSWORD=miniapp_local
-POSTGRES_PORT=5432
-APP_PORT=8080
-
-DB_RW_URL=jdbc:postgresql://localhost:5432/miniapp_db
-DB_RW_USERNAME=miniapp
-DB_RW_PASSWORD=miniapp_local
-DB_RO_URL=jdbc:postgresql://localhost:5432/miniapp_db
-DB_RO_USERNAME=miniapp
-DB_RO_PASSWORD=miniapp_local
+```powershell
+Copy-Item .env.example .env
 ```
 
 Kredensial database server **tidak** disimpan di repository.
@@ -162,8 +153,9 @@ Contoh response (nilai bervariasi):
 
 Cara membaca hasil pengecekan RO:
 
-- `readOnlyTransaction: true` pada `readOnly` membuktikan transaksi read-only benar-benar diarahkan ke pool RO.
-- `inRecovery: true` berarti endpoint RO adalah replika (hot standby). Jika `false`, endpoint RO sebenarnya server primary.
+- `readOnlyTransaction: true` pada `readOnly` menunjukkan pengecekan berjalan di dalam transaksi read-only. Nilai ini **tidak** membuktikan koneksi berasal dari pool RO, karena koneksi dari pool RW pun di-set read-only saat berada di transaksi read-only.
+- Bukti koneksi benar-benar menuju endpoint RO adalah `inRecovery: true` pada `readOnly` (server replika/hot standby), sementara `readWrite` bernilai `false`. Jika `readOnly` juga `false`, endpoint RO sebenarnya server primary.
+- Di lokal, kedua pool mengarah ke instance PostgreSQL yang sama, sehingga `inRecovery` selalu `false`.
 
 ## Docker image
 
@@ -211,12 +203,51 @@ docker compose -p afl3-develop    --env-file .env.develop    -f compose.server.y
 
 Nama project (`-p` dan `COMPOSE_PROJECT_NAME`) wajib berbeda per environment. Jika sama, menjalankan salah satu environment akan menimpa container environment lainnya.
 
-Persiapan sebelum deploy pertama:
+`compose.server.yml` memakai `pull_policy: always`, sehingga setiap `up -d` selalu menarik image terbaru. Tanpa pengaturan ini, tag `:production` / `:develop` yang sudah ada di node tidak akan diperbarui dan versi lama tetap berjalan.
+
+### Role database per environment
+
+Setiap environment memakai role PostgreSQL sendiri yang hanya berhak atas schema miliknya. Aplikasi develop tidak dapat membaca atau mengubah schema production, dan sebaliknya.
+
+| Environment | Role | Schema (dimiliki role) | Password |
+|---|---|---|---|
+| Production | `afl3_production` | `production` | `DB_RW_PASSWORD` di `.env.production` |
+| Develop | `afl3_develop` | `develop` | `DB_RW_PASSWORD` di `.env.develop` |
+
+Jalankan **sekali** dengan `psql` di primary (endpoint RW) `miniapp_db` sebagai superuser (mis. `postgres`):
+
+```sql
+-- Isi dengan nilai DB_RW_PASSWORD dari .env.production dan .env.develop
+\set production_password '<password production>'
+\set develop_password '<password develop>'
+
+CREATE ROLE afl3_production LOGIN PASSWORD :'production_password';
+CREATE ROLE afl3_develop    LOGIN PASSWORD :'develop_password';
+
+-- Schema dibuat lebih dulu dan dimiliki role environment-nya,
+-- sehingga Flyway tidak perlu membuat schema dan role tidak membutuhkan hak CREATE pada database.
+CREATE SCHEMA production AUTHORIZATION afl3_production;
+CREATE SCHEMA develop    AUTHORIZATION afl3_develop;
+
+GRANT CONNECT ON DATABASE miniapp_db TO afl3_production, afl3_develop;
+
+ALTER ROLE afl3_production SET search_path = production;
+ALTER ROLE afl3_develop    SET search_path = develop;
+```
+
+Catatan:
+
+- Jika endpoint RO adalah replika fisik (streaming replication), role dan schema ikut tereplikasi sehingga tidak perlu dibuat ulang di replika.
+- `pg_hba.conf` di primary dan replika harus mengizinkan role `afl3_production` dan `afl3_develop` dari IP node deploy. Aturan yang hanya menyebut user tertentu akan menolak role baru.
+- User admin (`cred_db.md`) hanya dipakai untuk administrasi, tidak dipakai oleh aplikasi.
+
+### Persiapan sebelum deploy pertama
 
 - `APP_IMAGE` di `.env.production` dan `.env.develop` menunjuk ke `ghcr.io/satryo-1076012614901/afl3-miniapp` dengan tag `:production` dan `:develop`.
-- Jika package GHCR bersifat private, login di node: `docker login ghcr.io`.
+- Package GHCR bersifat private secara default. Login di node dengan Personal Access Token ber-scope `read:packages`: `docker login ghcr.io -u satryo-1076012614901`.
 - Pastikan network `traefik` sudah ada di node.
-- User database membutuhkan hak membuat schema pada `miniapp_db` (Flyway membuat schema `production` dan `develop` saat start pertama), misalnya `GRANT CREATE ON DATABASE miniapp_db TO <user>;` bila user tersebut bukan owner database.
+- Buat role dan schema database (lihat *Role database per environment*).
+- Sesuaikan `APP_MEM_LIMIT` di kedua file env dengan RAM node. Total batas production + develop (default 2 × `768m`) ditambah kebutuhan Traefik dan layanan lain tidak boleh melebihi RAM node.
 
 Container tidak mem-publish port ke host; seluruh akses melalui Traefik. Traefik hanya meneruskan trafik ke container yang berstatus `healthy`.
 

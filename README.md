@@ -16,7 +16,8 @@ afl3-miniapp/
 ├── .dockerignore             # Whitelist file yang dikirim ke Docker saat build
 ├── compose.local.yml         # PostgreSQL 16 + aplikasi untuk development lokal
 ├── compose.server.yml        # Deploy di server (di belakang Traefik) untuk /production dan /develop
-├── .env                      # Konfigurasi lokal            (TIDAK di-commit)
+├── .env.example              # Template .env lokal (di-commit)
+├── .env                      # Konfigurasi lokal, salinan .env.example (TIDAK di-commit)
 ├── .env.production           # Konfigurasi server production (TIDAK di-commit)
 ├── .env.develop              # Konfigurasi server develop    (TIDAK di-commit)
 ├── build.gradle.kts          # Dependency dan konfigurasi build
@@ -309,7 +310,10 @@ class CompetitionController(private val competitionService: CompetitionService) 
    git clone https://github.com/satryo-1076012614901/afl3-miniapp.git
    cd afl3-miniapp
    ```
-3. Buat file `.env` di root project dengan isi template pada bagian *Konfigurasi environment* di [`HELP.md`](HELP.md). File ini tidak di-commit.
+3. Buat file `.env` dari template (file `.env` tidak di-commit):
+   ```powershell
+   Copy-Item .env.example .env
+   ```
 4. Jalankan aplikasi dan pastikan lingkungan lokal berfungsi:
    ```powershell
    docker compose -f compose.local.yml up -d --build
