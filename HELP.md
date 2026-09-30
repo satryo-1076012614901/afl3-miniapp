@@ -214,15 +214,17 @@ Setiap environment memakai role PostgreSQL sendiri yang hanya berhak atas schema
 | Production | `afl3_production` | `production` | `DB_RW_PASSWORD` di `.env.production` |
 | Develop | `afl3_develop` | `develop` | `DB_RW_PASSWORD` di `.env.develop` |
 
-Jalankan **sekali** dengan `psql` di primary (endpoint RW) `miniapp_db` sebagai superuser (mis. `postgres`):
+Jalankan **sekali** dengan `psql` di primary (endpoint RW) `miniapp_db` sebagai superuser (mis. `postgres`). Superuser dibutuhkan karena `CREATE ROLE` memerlukan hak superuser/`CREATEROLE`, dan `CREATE SCHEMA ... AUTHORIZATION` di PostgreSQL 16 mensyaratkan pelaksana dapat `SET ROLE` ke role tujuan.
 
 ```sql
--- Isi dengan nilai DB_RW_PASSWORD dari .env.production dan .env.develop
-\set production_password '<password production>'
-\set develop_password '<password develop>'
+CREATE ROLE afl3_production LOGIN;
+CREATE ROLE afl3_develop    LOGIN;
 
-CREATE ROLE afl3_production LOGIN PASSWORD :'production_password';
-CREATE ROLE afl3_develop    LOGIN PASSWORD :'develop_password';
+-- Password diisi lewat prompt (di-hash di sisi klien, tidak tercatat di log server).
+-- afl3_production: DB_RW_PASSWORD dari .env.production
+-- afl3_develop   : DB_RW_PASSWORD dari .env.develop
+\password afl3_production
+\password afl3_develop
 
 -- Schema dibuat lebih dulu dan dimiliki role environment-nya,
 -- sehingga Flyway tidak perlu membuat schema dan role tidak membutuhkan hak CREATE pada database.
