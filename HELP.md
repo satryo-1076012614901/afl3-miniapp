@@ -35,7 +35,7 @@ Aturan antar-layer:
 - `controller` hanya memanggil `service` dan mengembalikan `dto`; controller tidak mengakses `repository` secara langsung.
 - `service` menentukan batas transaksi (`@Transactional` / `@Transactional(readOnly = true)`), sehingga service juga menentukan pool RW atau RO yang dipakai.
 - Entity JPA tidak dikembalikan langsung ke client; petakan ke `dto` di service.
-- Error dilempar sebagai exception (mis. `ResourceNotFoundException`) dan diubah menjadi response `ProblemDetail` (RFC 9457) oleh `GlobalExceptionHandler`.
+- Error dilempar sebagai exception dan diubah oleh `GlobalExceptionHandler` menjadi body standar `{"code":"<KODE>","message":"<pesan>"}` sesuai katalog error API. Handler awal masih memakai `ProblemDetail` dan harus disesuaikan sebelum endpoint bisnis diimplementasikan.
 
 Setiap modul menambahkan file pada layer yang sesuai, misalnya `controller/CompetitionController.kt`, `service/CompetitionService.kt`, `repository/CompetitionRepository.kt`, `domain/Competition.kt`, dan `dto/CompetitionDto.kt`.
 
@@ -156,6 +156,74 @@ Cara membaca hasil pengecekan RO:
 - `readOnlyTransaction: true` pada `readOnly` menunjukkan pengecekan berjalan di dalam transaksi read-only. Nilai ini **tidak** membuktikan koneksi berasal dari pool RO, karena koneksi dari pool RW pun di-set read-only saat berada di transaksi read-only.
 - Bukti koneksi benar-benar menuju endpoint RO adalah `inRecovery: true` pada `readOnly` (server replika/hot standby), sementara `readWrite` bernilai `false`. Jika `readOnly` juga `false`, endpoint RO sebenarnya server primary.
 - Di lokal, kedua pool mengarah ke instance PostgreSQL yang sama, sehingga `inRecovery` selalu `false`.
+
+## Kontrak API aplikasi
+
+Bagian ini merangkum **Mini Competition Manager — Daftar API, revisi 29 September 2026** dan menjadi acuan implementasi backend serta Android. Semua endpoint aplikasi memakai prefix `/api`; endpoint operasional `/system/status` dan `/actuator/health` tidak memakai prefix tersebut.
+
+### Endpoint
+
+| Modul | Method | Route | Sukses | Fungsi |
+|---|---|---|---|---|
+| Competition | `GET` | `/api/competitions` | `200 OK` | Daftar kompetisi |
+| Competition | `POST` | `/api/competitions` | `201 Created` | Membuat kompetisi berstatus `OPEN` |
+| Competition | `GET` | `/api/competitions/{competitionId}` | `200 OK` | Detail kompetisi |
+| Competition | `PUT` | `/api/competitions/{competitionId}` | `200 OK` | Mengubah kompetisi saat `OPEN` |
+| Competition | `DELETE` | `/api/competitions/{competitionId}` | `204 No Content` | Menghapus kompetisi saat `OPEN` |
+| Participant | `GET` | `/api/competitions/{competitionId}/participants` | `200 OK` | Daftar peserta |
+| Participant | `POST` | `/api/competitions/{competitionId}/participants` | `201 Created` | Mendaftarkan peserta saat `OPEN` |
+| Participant | `GET` | `/api/competitions/{competitionId}/participants/{participantId}` | `200 OK` | Detail peserta |
+| Participant | `PUT` | `/api/competitions/{competitionId}/participants/{participantId}` | `200 OK` | Mengubah peserta saat `OPEN` |
+| Participant | `DELETE` | `/api/competitions/{competitionId}/participants/{participantId}` | `204 No Content` | Menghapus peserta saat `OPEN` |
+| Match | `POST` | `/api/competitions/{competitionId}/matches` | `201 Created` | Membuat seluruh bracket |
+| Match | `GET` | `/api/competitions/{competitionId}/matches` | `200 OK` | Daftar match dalam urutan bracket |
+| Match | `GET` | `/api/competitions/{competitionId}/matches/{matchId}` | `200 OK` | Detail match |
+| Match | `POST` | `/api/competitions/{competitionId}/matches/{matchId}/result` | `200 OK` | Menyimpan hasil dan memajukan pemenang |
+| Match | `POST` | `/api/competitions/{competitionId}/matches/{matchId}/undo` | `200 OK` | Membatalkan hasil match |
+| Match | `DELETE` | `/api/competitions/{competitionId}/matches` | `204 No Content` | Menghapus bracket dan kembali ke `OPEN` |
+
+### Model dan enum
+
+- `Competition`: `id`, `name`, `participantType`, `status`, `championId` (nullable), `createdAt`, dan `updatedAt`.
+- `Participant`: `id`, `competitionId`, `name`, `members`, `createdAt`, dan `updatedAt`. `members` hanya dipakai untuk kompetisi `TEAM`; setiap member memiliki `name`.
+- `Match`: `id`, `competitionId`, `participant1Id`, `participant2Id`, `winnerId`, `nextMatchId`, `round`, `matchNumber`, `score1`, `score2`, `status`, `createdAt`, dan `updatedAt`. ID peserta, pemenang, dan next match nullable sesuai posisi bracket.
+- `ParticipantType`: `INDIVIDUAL`, `TEAM`.
+- `CompetitionStatus`: `OPEN`, `IN_MATCH`, `COMPLETED`.
+- `MatchStatus`: `PENDING`, `READY`, `COMPLETED`.
+
+Request membuat atau mengubah kompetisi berisi `name` dan `participantType`. Request membuat atau mengubah peserta berisi `name` serta `members` bila tipenya `TEAM`. Request submit hasil berisi `winnerId` dan boleh menyertakan `score1` serta `score2`; score yang diberikan harus bilangan bulat non-negatif.
+
+### Aturan bisnis
+
+1. Kompetisi baru berstatus `OPEN`. Nama tidak boleh kosong.
+2. `participantType` tidak boleh diubah setelah kompetisi memiliki peserta.
+3. Peserta hanya dapat dibuat, diubah, atau dihapus saat kompetisi `OPEN`; nama peserta unik dalam satu kompetisi.
+4. Bracket MVP hanya dapat dibuat untuk tepat 4, 8, atau 16 peserta. Generate membuat seluruh match dalam satu transaksi, lalu mengubah kompetisi menjadi `IN_MATCH`.
+5. Match round pertama berstatus `READY`; match berikutnya `PENDING` sampai kedua slot terisi.
+6. Hasil hanya dapat dikirim ke match `READY`. `winnerId` harus sama dengan `participant1Id` atau `participant2Id` match tersebut.
+7. Submit mengubah match menjadi `COMPLETED` dan mengisi slot pemenang pada match berikutnya. Penyelesaian final mengubah kompetisi menjadi `COMPLETED` dan mengisi `championId`.
+8. Undo hanya diizinkan untuk match `COMPLETED` bila match berikutnya belum `COMPLETED`. Undo final mengembalikan kompetisi ke `IN_MATCH` dan mengosongkan champion.
+9. Reset menghapus seluruh match, mengosongkan champion, dan mengembalikan kompetisi ke `OPEN`.
+10. Generate, submit, undo, dan reset menyentuh beberapa record dan wajib atomik dalam satu transaksi read-write.
+
+### Error body dan katalog kode
+
+Seluruh error API memakai media type JSON dengan bentuk:
+
+```json
+{
+  "code": "MATCH_NOT_READY",
+  "message": "Match is not ready to receive a result"
+}
+```
+
+| HTTP | Kode |
+|---|---|
+| `400` | `VALIDATION_ERROR`, `INVALID_WINNER`, `MEMBERS_NOT_ALLOWED` |
+| `404` | `COMPETITION_NOT_FOUND`, `PARTICIPANT_NOT_FOUND`, `MATCH_NOT_FOUND` |
+| `409` | `COMPETITION_NOT_OPEN`, `COMPETITION_NOT_IN_MATCH`, `PARTICIPANT_TYPE_LOCKED`, `DUPLICATE_PARTICIPANT_NAME`, `INVALID_PARTICIPANT_COUNT`, `MATCH_NOT_READY`, `MATCH_UNDO_NOT_ALLOWED` |
+
+Validasi path bersifat hierarkis: participant atau match harus menjadi milik `competitionId` pada URL. Jika tidak, response menggunakan kode not-found untuk resource tersebut dan tidak membocorkan resource dari kompetisi lain.
 
 ## Docker image
 
@@ -299,3 +367,4 @@ Langkah kerja lengkap untuk tim ada di [`README.md`](README.md). Ringkasnya:
 
 - Workflow GitHub Actions (`.github/workflows/`).
 - Migration awal serta kode modul Competition, Participant, dan Match.
+- Implementasi error body `code`/`message` beserta pemetaan katalog kode error API.

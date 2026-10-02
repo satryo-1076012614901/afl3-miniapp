@@ -51,7 +51,7 @@ File yang sudah ada sebagai contoh dan acuan:
 | `repository/DatabaseProbeRepository.kt` | Contoh repository berbasis `JdbcTemplate` |
 | `domain/DatabaseProbe.kt` | Contoh model domain |
 | `dto/SystemStatusResponse.kt` | Contoh DTO response |
-| `exception/GlobalExceptionHandler.kt` | Mengubah exception menjadi response `ProblemDetail` (RFC 9457) |
+| `exception/GlobalExceptionHandler.kt` | Contoh handler bersama; implementasi awal masih `ProblemDetail` dan perlu disesuaikan ke kontrak `code`/`message` sebelum endpoint bisnis dibuat |
 | `exception/ResourceNotFoundException.kt` | Exception untuk data tidak ditemukan (HTTP 404) |
 
 ---
@@ -75,7 +75,7 @@ repository/   query ke database
       ▼
 PostgreSQL    schema sesuai environment (public / develop / production)
 
-exception/GlobalExceptionHandler  <-- menangkap exception dari layer mana pun, mengembalikan ProblemDetail
+exception/GlobalExceptionHandler  <-- menangkap exception dari layer mana pun; targetnya error body standar
 ```
 
 ### 2.2 Tanggung jawab dan aturan tiap layer
@@ -96,7 +96,8 @@ Aturan tambahan:
 2. **Read-after-write di transaksi yang sama.** Data yang baru ditulis lalu langsung dibaca (mis. membuat match lalu menampilkan bracket) wajib diproses dalam satu method `@Transactional`, karena database RO dapat tertinggal dari RW.
 3. **Entity tidak keluar dari service.** Controller selalu menerima dan mengembalikan DTO.
 4. **Error dilempar sebagai exception**, misalnya `throw ResourceNotFoundException("Competition", id)`. Jangan membuat response error manual di controller.
-5. **Schema database hanya diubah melalui migration Flyway.** Hibernate berjalan dengan `ddl-auto: validate`, sehingga aplikasi gagal start jika entity tidak sesuai dengan tabel.
+5. **Error API mengikuti satu kontrak.** Seluruh response error memakai body `{"code":"<KODE>","message":"<pesan>"}`. Daftar kode error ada di [`HELP.md`](HELP.md#kontrak-api-aplikasi).
+6. **Schema database hanya diubah melalui migration Flyway.** Hibernate berjalan dengan `ddl-auto: validate`, sehingga aplikasi gagal start jika entity tidak sesuai dengan tabel.
 
 ### 2.3 Konvensi penamaan
 
@@ -109,7 +110,7 @@ Aturan tambahan:
 | DTO | `<Nama>Request`, `<Nama>Response` dalam `dto/<Nama>Dto.kt` | `dto/CompetitionDto.kt` |
 | Tabel | snake_case tunggal | `competition`, `participant`, `match` |
 | Migration | `V<versi>__<aksi>_<objek>.sql` | `V1__create_competition.sql` |
-| URL | kata benda jamak, kebab-case | `/competitions`, `/competitions/{id}` |
+| URL | diawali `/api`, kata benda jamak, kebab-case | `/api/competitions`, `/api/competitions/{competitionId}` |
 
 ### 2.4 Pembagian modul
 
@@ -125,7 +126,7 @@ Jika tabel suatu modul memiliki foreign key ke tabel modul lain (mis. `participa
 
 ### 2.5 Contoh satu modul
 
-Contoh berikut adalah **ilustrasi** penempatan kode untuk modul Competition. Kolom, validasi, dan endpoint disesuaikan dengan desain tim.
+Contoh berikut adalah **ilustrasi** penempatan kode untuk modul Competition, bukan kontrak API lengkap. Field, validasi, status, serta response final wajib mengikuti [kontrak API di `HELP.md`](HELP.md#kontrak-api-aplikasi).
 
 **`src/main/resources/db/migration/V1__create_competition.sql`**
 
@@ -274,7 +275,7 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@RequestMapping("/competitions")
+@RequestMapping("/api/competitions")
 class CompetitionController(private val competitionService: CompetitionService) {
 
     @GetMapping
@@ -378,14 +379,14 @@ Commit secara bertahap dengan pesan yang jelas, misalnya `competition: tambah en
 5. **Uji endpoint modul**, untuk kasus berhasil maupun gagal. Contoh dengan PowerShell:
    ```powershell
    # Create -> 201
-   Invoke-RestMethod -Method Post -Uri http://localhost:8080/competitions -ContentType 'application/json' -Body '{"name":"Turnamen A"}'
+   Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/competitions -ContentType 'application/json' -Body '{"name":"Turnamen A","participantType":"INDIVIDUAL"}'
    # Read -> 200
-   Invoke-RestMethod http://localhost:8080/competitions
-   Invoke-RestMethod http://localhost:8080/competitions/1
-   # Validasi gagal -> 400 (ProblemDetail)
-   Invoke-RestMethod -Method Post -Uri http://localhost:8080/competitions -ContentType 'application/json' -Body '{"name":""}'
-   # Data tidak ada -> 404 (ProblemDetail)
-   Invoke-RestMethod http://localhost:8080/competitions/9999
+   Invoke-RestMethod http://localhost:8080/api/competitions
+   Invoke-RestMethod http://localhost:8080/api/competitions/1
+   # Validasi gagal -> 400 { code: "VALIDATION_ERROR", message: "..." }
+   Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/competitions -ContentType 'application/json' -Body '{"name":"","participantType":"INDIVIDUAL"}'
+   # Data tidak ada -> 404 { code: "COMPETITION_NOT_FOUND", message: "..." }
+   Invoke-RestMethod http://localhost:8080/api/competitions/9999
    ```
    Postman atau HTTP Client di IntelliJ juga dapat dipakai.
 6. **Jalankan test** (PostgreSQL lokal harus berjalan):
