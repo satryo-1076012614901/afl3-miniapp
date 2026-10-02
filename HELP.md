@@ -184,7 +184,7 @@ Bagian ini merangkum **Mini Competition Manager — Daftar API, revisi 29 Septem
 
 ### Model dan enum
 
-- `Competition`: `id`, `name`, `participantType`, `status`, `championId` (nullable), `createdAt`, dan `updatedAt`.
+- `Competition`: `id`, `name`, `participantType`, `status`, `createdAt`, dan `updatedAt`.
 - `Participant`: `id`, `competitionId`, `name`, `members`, `createdAt`, dan `updatedAt`. `members` hanya dipakai untuk kompetisi `TEAM`; setiap member memiliki `name`.
 - `Match`: `id`, `competitionId`, `participant1Id`, `participant2Id`, `winnerId`, `nextMatchId`, `round`, `matchNumber`, `score1`, `score2`, `status`, `createdAt`, dan `updatedAt`. ID peserta, pemenang, dan next match nullable sesuai posisi bracket.
 - `ParticipantType`: `INDIVIDUAL`, `TEAM`.
@@ -192,6 +192,35 @@ Bagian ini merangkum **Mini Competition Manager — Daftar API, revisi 29 Septem
 - `MatchStatus`: `PENDING`, `READY`, `COMPLETED`.
 
 Request membuat atau mengubah kompetisi berisi `name` dan `participantType`. Request membuat atau mengubah peserta berisi `name` serta `members` bila tipenya `TEAM`. Request submit hasil berisi `winnerId` dan boleh menyertakan `score1` serta `score2`; score yang diberikan harus bilangan bulat non-negatif.
+
+### Schema database yang disepakati
+
+Schema mengikuti proposal dan terdiri dari tiga tabel berikut. Nama kolom memakai snake_case; seluruh timestamp bertipe `timestamptz NOT NULL`.
+
+| Tabel | Kolom | Tipe dan constraint |
+|---|---|---|
+| `competition` | `id` | `bigint`, primary key |
+|  | `name` | `varchar NOT NULL` |
+|  | `participant_type` | `varchar NOT NULL`; `INDIVIDUAL` atau `TEAM` |
+|  | `status` | `varchar NOT NULL`; `OPEN`, `IN_MATCH`, atau `COMPLETED` |
+|  | `created_at`, `updated_at` | `timestamptz NOT NULL` |
+| `participant` | `id` | `bigint`, primary key |
+|  | `competition_id` | `bigint NOT NULL`, foreign key ke `competition`, `ON DELETE CASCADE` |
+|  | `name` | `varchar NOT NULL`, unik pada `(competition_id, name)` |
+|  | `members` | `jsonb NULL`; array anggota tim, atau `null` untuk individu |
+|  | `created_at`, `updated_at` | `timestamptz NOT NULL` |
+| `match` | `id` | `bigint`, primary key |
+|  | `competition_id` | `bigint NOT NULL`, foreign key ke `competition` |
+|  | `participant_1_id`, `participant_2_id` | `bigint NULL`, foreign key ke `participant` |
+|  | `winner_id` | `bigint NULL`, foreign key ke `participant` |
+|  | `next_match_id` | `bigint NULL`, foreign key ke `match`; `null` untuk final |
+|  | `round` | `int NOT NULL`, dimulai dari 1 |
+|  | `match_number` | `int NOT NULL`, unik pada `(competition_id, round, match_number)` |
+|  | `score_1`, `score_2` | `int NULL` |
+|  | `status` | `varchar NOT NULL`; `PENDING`, `READY`, atau `COMPLETED` |
+|  | `created_at`, `updated_at` | `timestamptz NOT NULL` |
+
+Tidak ada kolom `champion_id` pada `competition`. Champion diperoleh dari `winner_id` match final yang sudah `COMPLETED`.
 
 ### Aturan bisnis
 
@@ -201,9 +230,9 @@ Request membuat atau mengubah kompetisi berisi `name` dan `participantType`. Req
 4. Bracket MVP hanya dapat dibuat untuk tepat 4, 8, atau 16 peserta. Generate membuat seluruh match dalam satu transaksi, lalu mengubah kompetisi menjadi `IN_MATCH`.
 5. Match round pertama berstatus `READY`; match berikutnya `PENDING` sampai kedua slot terisi.
 6. Hasil hanya dapat dikirim ke match `READY`. `winnerId` harus sama dengan `participant1Id` atau `participant2Id` match tersebut.
-7. Submit mengubah match menjadi `COMPLETED` dan mengisi slot pemenang pada match berikutnya. Penyelesaian final mengubah kompetisi menjadi `COMPLETED` dan mengisi `championId`.
-8. Undo hanya diizinkan untuk match `COMPLETED` bila match berikutnya belum `COMPLETED`. Undo final mengembalikan kompetisi ke `IN_MATCH` dan mengosongkan champion.
-9. Reset menghapus seluruh match, mengosongkan champion, dan mengembalikan kompetisi ke `OPEN`.
+7. Submit mengubah match menjadi `COMPLETED` dan mengisi slot pemenang pada match berikutnya. Penyelesaian final mengubah kompetisi menjadi `COMPLETED`; champion adalah `winner_id` pada match final.
+8. Undo hanya diizinkan untuk match `COMPLETED` bila match berikutnya belum `COMPLETED`. Undo final mengembalikan kompetisi ke `IN_MATCH`.
+9. Reset menghapus seluruh match dan mengembalikan kompetisi ke `OPEN`.
 10. Generate, submit, undo, dan reset menyentuh beberapa record dan wajib atomik dalam satu transaksi read-write.
 
 ### Error body dan katalog kode
