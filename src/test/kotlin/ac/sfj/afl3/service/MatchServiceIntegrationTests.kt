@@ -1,13 +1,17 @@
 package ac.sfj.afl3.service
 
 import ac.sfj.afl3.domain.Competition
+import ac.sfj.afl3.domain.CompetitionStatus
 import ac.sfj.afl3.domain.Match
 import ac.sfj.afl3.domain.MatchStatus
 import ac.sfj.afl3.domain.ParticipantType
+import ac.sfj.afl3.domain.Participant
 import ac.sfj.afl3.exception.ApiErrorCode
 import ac.sfj.afl3.exception.ResourceNotFoundException
+import ac.sfj.afl3.exception.ApiException
 import ac.sfj.afl3.repository.CompetitionRepository
 import ac.sfj.afl3.repository.MatchRepository
+import ac.sfj.afl3.repository.ParticipantRepository
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -28,6 +32,55 @@ class MatchServiceIntegrationTests {
 
     @Autowired
     private lateinit var matchRepository: MatchRepository
+
+    @Autowired
+    private lateinit var participantRepository: ParticipantRepository
+
+    @Test
+    fun `generates complete linked bracket and locks competition state`() {
+        val competition = createCompetition("Generate")
+        val competitionId = requireNotNull(competition.id)
+        val participants = (1..4).map { index ->
+            participantRepository.save(Participant(competitionId, "Participant $index"))
+        }
+
+        val result = matchService.generate(competitionId)
+
+        assertEquals(3, result.size)
+        assertEquals(requireNotNull(participants[0].id), result[0].participant1Id)
+        assertEquals(requireNotNull(participants[1].id), result[0].participant2Id)
+        assertEquals(requireNotNull(participants[2].id), result[1].participant1Id)
+        assertEquals(requireNotNull(participants[3].id), result[1].participant2Id)
+        assertEquals(listOf(MatchStatus.READY, MatchStatus.READY, MatchStatus.PENDING), result.map { it.status })
+        assertEquals(result[2].id, result[0].nextMatchId)
+        assertEquals(result[2].id, result[1].nextMatchId)
+        assertEquals(CompetitionStatus.IN_MATCH, competitionRepository.findById(competitionId).orElseThrow().status)
+    }
+
+    @Test
+    fun `rejects generate when participant count is invalid`() {
+        val competition = createCompetition("Invalid count")
+
+        val exception = assertFailsWith<ApiException> {
+            matchService.generate(requireNotNull(competition.id))
+        }
+
+        assertEquals(ApiErrorCode.INVALID_PARTICIPANT_COUNT, exception.code)
+    }
+
+    @Test
+    fun `rejects generate unless competition is open`() {
+        val competition = createCompetition("Already started").apply {
+            status = CompetitionStatus.IN_MATCH
+        }
+        competitionRepository.save(competition)
+
+        val exception = assertFailsWith<ApiException> {
+            matchService.generate(requireNotNull(competition.id))
+        }
+
+        assertEquals(ApiErrorCode.COMPETITION_NOT_OPEN, exception.code)
+    }
 
     @Test
     fun `returns empty bracket for existing competition`() {

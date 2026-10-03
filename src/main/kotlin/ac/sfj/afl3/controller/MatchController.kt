@@ -4,12 +4,20 @@ import ac.sfj.afl3.dto.MatchResponse
 import ac.sfj.afl3.service.MatchService
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.ResponseStatus
+import org.springframework.http.HttpStatus
 
 @RestController
 @RequestMapping("/api/competitions/{competitionId}/matches")
 class MatchController(private val matchService: MatchService) {
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    fun generate(@PathVariable competitionId: Long): List<MatchResponse> =
+        matchService.generate(competitionId)
 
     @GetMapping
     fun findAll(@PathVariable competitionId: Long): List<MatchResponse> =
