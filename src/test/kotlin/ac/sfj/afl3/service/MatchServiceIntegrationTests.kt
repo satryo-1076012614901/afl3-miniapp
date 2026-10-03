@@ -12,6 +12,7 @@ import ac.sfj.afl3.exception.ApiException
 import ac.sfj.afl3.repository.CompetitionRepository
 import ac.sfj.afl3.repository.MatchRepository
 import ac.sfj.afl3.repository.ParticipantRepository
+import ac.sfj.afl3.dto.SubmitMatchResultRequest
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -35,6 +36,76 @@ class MatchServiceIntegrationTests {
 
     @Autowired
     private lateinit var participantRepository: ParticipantRepository
+
+    @Test
+    fun `submits results into fixed slots and completes final`() {
+        val competition = createCompetition("Progression")
+        val competitionId = requireNotNull(competition.id)
+        val participants = (1..4).map { index ->
+            participantRepository.save(Participant(competitionId, "Progression $index"))
+        }
+        val bracket = matchService.generate(competitionId)
+
+        matchService.submitResult(
+            competitionId,
+            bracket[0].id,
+            SubmitMatchResultRequest(requireNotNull(participants[0].id), 21, 10),
+        )
+        var final = matchService.findById(competitionId, bracket[2].id)
+        assertEquals(requireNotNull(participants[0].id), final.participant1Id)
+        assertEquals(MatchStatus.PENDING, final.status)
+
+        matchService.submitResult(
+            competitionId,
+            bracket[1].id,
+            SubmitMatchResultRequest(requireNotNull(participants[3].id), 12, 21),
+        )
+        final = matchService.findById(competitionId, bracket[2].id)
+        assertEquals(requireNotNull(participants[3].id), final.participant2Id)
+        assertEquals(MatchStatus.READY, final.status)
+
+        val completedFinal = matchService.submitResult(
+            competitionId,
+            final.id,
+            SubmitMatchResultRequest(requireNotNull(participants[0].id), 21, 18),
+        )
+
+        assertEquals(MatchStatus.COMPLETED, completedFinal.status)
+        assertEquals(requireNotNull(participants[0].id), completedFinal.winnerId)
+        assertEquals(CompetitionStatus.COMPLETED, competitionRepository.findById(competitionId).orElseThrow().status)
+    }
+
+    @Test
+    fun `rejects result with participant outside the match`() {
+        val competition = createCompetition("Invalid winner")
+        val competitionId = requireNotNull(competition.id)
+        repeat(4) { index ->
+            participantRepository.save(Participant(competitionId, "Invalid winner $index"))
+        }
+        val bracket = matchService.generate(competitionId)
+
+        val exception = assertFailsWith<ApiException> {
+            matchService.submitResult(competitionId, bracket[0].id, SubmitMatchResultRequest(Long.MAX_VALUE))
+        }
+
+        assertEquals(ApiErrorCode.INVALID_WINNER, exception.code)
+    }
+
+    @Test
+    fun `rejects result for match that is not ready`() {
+        val competition = createCompetition("Not ready")
+        val competitionId = requireNotNull(competition.id)
+        repeat(4) { index ->
+            participantRepository.save(Participant(competitionId, "Not ready $index"))
+        }
+        val bracket = matchService.generate(competitionId)
+
+        val exception = assertFailsWith<ApiException> {
+            matchService.submitResult(competitionId, bracket.last().id, SubmitMatchResultRequest(1))
+        }
+
+        assertEquals(ApiErrorCode.MATCH_NOT_READY, exception.code)
+    }
 
     @Test
     fun `generates complete linked bracket and locks competition state`() {

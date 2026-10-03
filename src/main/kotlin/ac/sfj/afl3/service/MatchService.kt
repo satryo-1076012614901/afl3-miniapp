@@ -2,7 +2,9 @@ package ac.sfj.afl3.service
 
 import ac.sfj.afl3.domain.CompetitionStatus
 import ac.sfj.afl3.domain.Match
+import ac.sfj.afl3.domain.MatchStatus
 import ac.sfj.afl3.dto.MatchResponse
+import ac.sfj.afl3.dto.SubmitMatchResultRequest
 import ac.sfj.afl3.dto.toResponse
 import ac.sfj.afl3.exception.ApiErrorCode
 import ac.sfj.afl3.exception.ApiException
@@ -66,6 +68,68 @@ class MatchService(
         competition.status = CompetitionStatus.IN_MATCH
         matchRepository.flush()
         return matches.map { it.toResponse() }
+    }
+
+    @Transactional
+    fun submitResult(
+        competitionId: Long,
+        matchId: Long,
+        request: SubmitMatchResultRequest,
+    ): MatchResponse {
+        val competition = lockCompetition(competitionId)
+        if (competition.status != CompetitionStatus.IN_MATCH) {
+            throw ApiException(
+                HttpStatus.CONFLICT,
+                ApiErrorCode.COMPETITION_NOT_IN_MATCH,
+                "Competition is not in match",
+            )
+        }
+
+        val match = requireMatch(competitionId, matchId)
+        if (match.status != MatchStatus.READY) {
+            throw ApiException(
+                HttpStatus.CONFLICT,
+                ApiErrorCode.MATCH_NOT_READY,
+                "Match is not ready to receive a result",
+            )
+        }
+        if (request.winnerId != match.participant1Id && request.winnerId != match.participant2Id) {
+            throw ApiException(
+                HttpStatus.BAD_REQUEST,
+                ApiErrorCode.INVALID_WINNER,
+                "Winner must be one of the match participants",
+            )
+        }
+        if (request.score1?.let { it < 0 } == true || request.score2?.let { it < 0 } == true) {
+            throw ApiException(
+                HttpStatus.BAD_REQUEST,
+                ApiErrorCode.VALIDATION_ERROR,
+                "Scores must be non-negative",
+            )
+        }
+
+        match.winnerId = request.winnerId
+        match.score1 = request.score1
+        match.score2 = request.score2
+        match.status = MatchStatus.COMPLETED
+
+        val nextMatchId = match.nextMatchId
+        if (nextMatchId == null) {
+            competition.status = CompetitionStatus.COMPLETED
+        } else {
+            val nextMatch = requireMatch(competitionId, nextMatchId)
+            if (match.matchNumber % 2 == 1) {
+                nextMatch.participant1Id = request.winnerId
+            } else {
+                nextMatch.participant2Id = request.winnerId
+            }
+            if (nextMatch.participant1Id != null && nextMatch.participant2Id != null) {
+                nextMatch.status = MatchStatus.READY
+            }
+        }
+
+        matchRepository.flush()
+        return match.toResponse()
     }
 
     fun findAll(competitionId: Long): List<MatchResponse> {
