@@ -28,14 +28,6 @@
             "url": "{{host}}/system/status",
             "description": "Checks application and database availability."
           }
-        },
-        {
-          "name": "Actuator Health",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{host}}/actuator/health"
-          }
         }
       ]
     },
