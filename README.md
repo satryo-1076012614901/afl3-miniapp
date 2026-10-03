@@ -2,7 +2,7 @@
 
 Backend REST API untuk aplikasi Android **Mini Competition Manager** (turnamen *single-elimination*), tugas AFL3 Visual Programming. Satu backend terdiri atas tiga modul — **Competition**, **Participant**, dan **Match** — dan setiap modul dikerjakan oleh satu anggota tim.
 
-Dokumen ini adalah panduan kerja tim: struktur folder, aturan penempatan kode, dan langkah dari mulai menulis kode, uji coba, hingga merge. Referensi teknis yang lebih rinci (environment variable, Docker image, deploy, routing database RW/RO) ada di [`HELP.md`](HELP.md).
+Dokumen ini adalah panduan kerja tim: struktur folder, aturan penempatan kode, dan langkah dari mulai menulis kode, uji coba, hingga merge. Referensi teknis yang lebih rinci (environment variable, Docker image, deploy, koneksi database, dan Flyway) ada di [`HELP.md`](HELP.md).
 
 ---
 
@@ -11,7 +11,7 @@ Dokumen ini adalah panduan kerja tim: struktur folder, aturan penempatan kode, d
 ```plain
 afl3-miniapp/
 ├── README.md                 # Panduan kerja tim (dokumen ini)
-├── HELP.md                   # Referensi teknis: env, Docker, deploy, routing RW/RO, Flyway
+├── HELP.md                   # Referensi teknis: env, Docker, deploy, database, Flyway
 ├── Dockerfile                # Build image aplikasi (multi-stage, JDK 25 -> JRE 25)
 ├── .dockerignore             # Whitelist file yang dikirim ke Docker saat build
 ├── compose.local.yml         # PostgreSQL 16 + aplikasi untuk development lokal
@@ -28,7 +28,7 @@ afl3-miniapp/
     ├── main/
     │   ├── kotlin/ac/sfj/afl3/
     │   │   ├── Afl3Application.kt   # Entry point aplikasi (jangan ditambah logika)
-    │   │   ├── config/              # Konfigurasi Spring (DataSourceConfig, WebConfig, dll.)
+    │   │   ├── config/              # Konfigurasi Spring (WebConfig, dll.)
     │   │   ├── controller/          # REST endpoint
     │   │   ├── service/             # Business logic + batas transaksi
     │   │   ├── repository/          # Akses data (Spring Data JPA / JdbcTemplate)
@@ -45,9 +45,9 @@ File yang sudah ada sebagai contoh dan acuan:
 
 | File | Fungsi |
 |---|---|
-| `config/DataSourceConfig.kt` | Routing koneksi database: transaksi read-only ke endpoint RO, selain itu ke RW |
+| `config/DataSourceConfig.kt` | Scaffold routing RW/RO lama; akan dihapus saat konfigurasi disederhanakan menjadi satu datasource |
 | `controller/SystemController.kt` | Endpoint uji coba `GET /system/status` |
-| `service/SystemStatusService.kt` | Contoh service yang mengatur transaksi RW dan RO |
+| `service/SystemStatusService.kt` | Contoh service untuk memeriksa koneksi database |
 | `repository/DatabaseProbeRepository.kt` | Contoh repository berbasis `JdbcTemplate` |
 | `domain/DatabaseProbe.kt` | Contoh model domain |
 | `dto/SystemStatusResponse.kt` | Contoh DTO response |
@@ -67,7 +67,7 @@ Client (Android)
 controller/   menerima request DTO, validasi (@Valid), memanggil service, mengembalikan response DTO
       │
       ▼
-service/      business logic; menentukan @Transactional (RW) atau @Transactional(readOnly = true) (RO)
+service/      business logic dan batas transaksi (@Transactional)
       │
       ▼
 repository/   query ke database
@@ -92,8 +92,8 @@ exception/GlobalExceptionHandler  <-- menangkap exception dari layer mana pun; t
 
 Aturan tambahan:
 
-1. **Transaksi ditentukan di service.** Beri `@Transactional(readOnly = true)` di level class service, lalu `@Transactional` pada method yang menulis data. Transaksi read-only diarahkan ke database RO, transaksi biasa ke RW.
-2. **Read-after-write di transaksi yang sama.** Data yang baru ditulis lalu langsung dibaca (mis. membuat match lalu menampilkan bracket) wajib diproses dalam satu method `@Transactional`, karena database RO dapat tertinggal dari RW.
+1. **Transaksi ditentukan di service.** Beri `@Transactional(readOnly = true)` di level class service sebagai penanda operasi baca, lalu `@Transactional` pada method yang menulis data. Keduanya memakai datasource PostgreSQL yang sama.
+2. **Operasi atomik berada di transaksi yang sama.** Perubahan yang menyentuh beberapa tabel (mis. membuat bracket dan mengubah status kompetisi) wajib diproses dalam satu method `@Transactional` agar seluruh perubahan commit atau rollback bersama.
 3. **Entity tidak keluar dari service.** Controller selalu menerima dan mengembalikan DTO.
 4. **Error dilempar sebagai exception**, misalnya `throw ResourceNotFoundException("Competition", id)`. Jangan membuat response error manual di controller.
 5. **Error API mengikuti satu kontrak.** Seluruh response error memakai body `{"code":"<KODE>","message":"<pesan>"}`. Daftar kode error ada di [`HELP.md`](HELP.md#kontrak-api-aplikasi).
@@ -224,7 +224,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 @Service
-@Transactional(readOnly = true)               // default: baca dari database RO
+@Transactional(readOnly = true)               // default: operasi baca
 class CompetitionService(private val competitionRepository: CompetitionRepository) {
 
     fun findAll(): List<CompetitionResponse> =
@@ -233,13 +233,13 @@ class CompetitionService(private val competitionRepository: CompetitionRepositor
     fun findById(id: Long): CompetitionResponse =
         getEntity(id).toResponse()
 
-    @Transactional                            // menulis: database RW
+    @Transactional                            // operasi tulis
     fun create(request: CompetitionRequest): CompetitionResponse =
         competitionRepository.save(Competition(name = request.name)).toResponse()
 
     @Transactional
     fun update(id: Long, request: CompetitionRequest): CompetitionResponse {
-        val competition = getEntity(id)       // dibaca dari RW karena berada di transaksi tulis
+        val competition = getEntity(id)       // dibaca dalam transaksi tulis yang sama
         competition.name = request.name       // disimpan otomatis saat transaksi commit
         return competition.toResponse()
     }
@@ -445,7 +445,7 @@ Buka GitHub, buat Pull Request dari `feature/competition` ke `main`, lalu salin 
 ### Langkah 7 — Review oleh anggota lain
 
 - PR wajib mendapat **minimal 1 approval dari anggota lain**. Penulis PR tidak me-merge PR-nya sendiri tanpa approval.
-- Reviewer memeriksa kesesuaian dengan aturan layer (bagian 2), transaksi RW/RO, migration, dan checklist. Bila perlu, reviewer menjalankan branch tersebut di lokal:
+- Reviewer memeriksa kesesuaian dengan aturan layer (bagian 2), batas transaksi, migration, dan checklist. Bila perlu, reviewer menjalankan branch tersebut di lokal:
   ```powershell
   git fetch origin
   git switch feature/competition
@@ -487,6 +487,5 @@ feature/<modul> ──PR (1 approval)──► main ──auto deploy──► /
 | `Migration checksum mismatch` | File migration yang sudah diterapkan diubah | Jangan ubah migration yang sudah di-merge; buat migration baru. Di lokal, reset database dengan `down -v` |
 | `Schema-validation: missing table` / `missing column` | Entity tidak sesuai dengan tabel hasil migration | Samakan entity dengan migration, atau tambahkan migration baru |
 | Container app `unhealthy` | Aplikasi gagal start atau database tidak terjangkau | `docker compose -f compose.local.yml logs app` |
-| `port is already allocated` | Port 5432 atau 8080 sudah dipakai program lain | Ubah `POSTGRES_PORT` / `APP_PORT` di `.env` (dan `DB_RW_URL`/`DB_RO_URL` bila port PostgreSQL berubah) |
+| `port is already allocated` | Port 5432 atau 8080 sudah dipakai program lain | Ubah `POSTGRES_PORT` / `APP_PORT` di `.env` (dan `DB_URL` bila port PostgreSQL berubah) |
 | `gradlew bootJar` gagal karena versi Java | JDK 25 belum terpasang | Install JDK 25, atau cukup build lewat `docker compose ... up -d --build` |
-| Data yang baru dibuat tidak muncul saat langsung dibaca | Pembacaan berjalan di transaksi read-only terpisah (database RO) | Lakukan penulisan dan pembacaan dalam satu method `@Transactional` |
