@@ -45,7 +45,6 @@ File yang sudah ada sebagai contoh dan acuan:
 
 | File | Fungsi |
 |---|---|
-| `config/DataSourceConfig.kt` | Scaffold routing RW/RO lama; akan dihapus saat konfigurasi disederhanakan menjadi satu datasource |
 | `controller/SystemController.kt` | Endpoint uji coba `GET /system/status` |
 | `service/SystemStatusService.kt` | Contoh service untuk memeriksa koneksi database |
 | `repository/DatabaseProbeRepository.kt` | Contoh repository berbasis `JdbcTemplate` |

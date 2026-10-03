@@ -5,6 +5,14 @@ spring:
     # Saat dijalankan dari IDE/Gradle, variabel dibaca dari file .env di root project (jika ada).
     # Environment variable yang di-set langsung (container/CI) tetap lebih diprioritaskan.
     import: optional:file:.env[.properties]
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      schema: ${DB_SCHEMA:public}
+      pool-name: afl3
+      maximum-pool-size: ${DB_POOL_SIZE:10}
   jpa:
     # Mencegah koneksi tertahan sepanjang request; akses lazy relation harus selesai di service.
     open-in-view: false
@@ -27,25 +35,6 @@ spring:
 app:
   # Nama environment yang sedang berjalan (local/develop/production); ditampilkan di /system/status.
   environment: ${APP_ENV:local}
-  # Konfigurasi dua pool koneksi (lihat config/DataSourceConfig.kt).
-  # Properti di bawah rw/ro di-bind langsung ke HikariDataSource.
-  datasource:
-    rw:
-      jdbc-url: ${DB_RW_URL}
-      username: ${DB_RW_USERNAME}
-      password: ${DB_RW_PASSWORD}
-      schema: ${DB_SCHEMA:public}
-      pool-name: afl3-rw
-      maximum-pool-size: ${DB_RW_POOL_SIZE:10}
-    ro:
-      # Jika DB_RO_* tidak didefinisikan, memakai nilai DB_RW_*.
-      jdbc-url: ${DB_RO_URL:${DB_RW_URL}}
-      username: ${DB_RO_USERNAME:${DB_RW_USERNAME}}
-      password: ${DB_RO_PASSWORD:${DB_RW_PASSWORD}}
-      schema: ${DB_SCHEMA:public}
-      pool-name: afl3-ro
-      maximum-pool-size: ${DB_RO_POOL_SIZE:10}
-      read-only: true
 
 server:
   port: ${SERVER_PORT:8080}

@@ -72,8 +72,6 @@ Saat dijalankan dari IDE/Gradle, Spring Boot membaca `.env` melalui `spring.conf
 | `COMPOSE_PROJECT_NAME`, `API_HOST`, `APP_IMAGE` | Ya (server) | Nama project compose, host Traefik, dan image GHCR (lihat *Deploy ke server*) |
 | `APP_MEM_LIMIT` | Ya (server) | Batas memori container, mis. `768m`. JVM memakai maksimal 75% dari nilai ini sebagai heap |
 
-Scaffold kode dan file Compose saat ini masih memakai nama `DB_RW_*`/`DB_RO_*`. Penggantian ke variabel datasource tunggal di atas dilakukan melalui PR implementasi bersama; modul baru tidak boleh menambahkan ketergantungan pada routing RW/RO lama.
-
 Untuk development lokal, salin template yang sudah di-commit:
 
 ```powershell
@@ -372,4 +370,3 @@ Langkah kerja lengkap untuk tim ada di [`README.md`](README.md). Ringkasnya:
 - Workflow GitHub Actions (`.github/workflows/`).
 - Migration awal serta kode modul Competition, Participant, dan Match.
 - Implementasi error body `code`/`message` beserta pemetaan katalog kode error API.
-- Penyederhanaan scaffold datasource dari konfigurasi RW/RO menjadi satu datasource, termasuk `.env.example`, Compose, `application.yaml`, health response, dan penghapusan `DataSourceConfig` lama.
