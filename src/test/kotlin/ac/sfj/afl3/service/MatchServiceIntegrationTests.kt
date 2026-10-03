@@ -38,6 +38,64 @@ class MatchServiceIntegrationTests {
     private lateinit var participantRepository: ParticipantRepository
 
     @Test
+    fun `undo clears result and fixed downstream slot`() {
+        val setup = generatedBracket("Undo")
+        matchService.submitResult(
+            setup.competitionId,
+            setup.matches[0].id,
+            SubmitMatchResultRequest(setup.participantIds[0], 21, 10),
+        )
+        matchService.submitResult(
+            setup.competitionId,
+            setup.matches[1].id,
+            SubmitMatchResultRequest(setup.participantIds[2], 21, 12),
+        )
+
+        val undone = matchService.undoResult(setup.competitionId, setup.matches[0].id)
+        val final = matchService.findById(setup.competitionId, setup.matches[2].id)
+
+        assertEquals(MatchStatus.READY, undone.status)
+        assertEquals(null, undone.winnerId)
+        assertEquals(null, undone.score1)
+        assertEquals(null, undone.score2)
+        assertEquals(null, final.participant1Id)
+        assertEquals(setup.participantIds[2], final.participant2Id)
+        assertEquals(MatchStatus.PENDING, final.status)
+    }
+
+    @Test
+    fun `undo rejects rollback when downstream match is completed`() {
+        val setup = completedTournament("Undo blocked")
+
+        val exception = assertFailsWith<ApiException> {
+            matchService.undoResult(setup.competitionId, setup.matches[0].id)
+        }
+
+        assertEquals(ApiErrorCode.MATCH_UNDO_NOT_ALLOWED, exception.code)
+    }
+
+    @Test
+    fun `undo final reopens competition`() {
+        val setup = completedTournament("Undo final")
+
+        val result = matchService.undoResult(setup.competitionId, setup.matches[2].id)
+
+        assertEquals(MatchStatus.READY, result.status)
+        assertEquals(null, result.winnerId)
+        assertEquals(CompetitionStatus.IN_MATCH, competitionRepository.findById(setup.competitionId).orElseThrow().status)
+    }
+
+    @Test
+    fun `reset deletes bracket and reopens competition`() {
+        val setup = generatedBracket("Reset")
+
+        matchService.reset(setup.competitionId)
+
+        assertTrue(matchService.findAll(setup.competitionId).isEmpty())
+        assertEquals(CompetitionStatus.OPEN, competitionRepository.findById(setup.competitionId).orElseThrow().status)
+    }
+
+    @Test
     fun `submits results into fixed slots and completes final`() {
         val competition = createCompetition("Progression")
         val competitionId = requireNotNull(competition.id)
@@ -201,4 +259,39 @@ class MatchServiceIntegrationTests {
         competitionRepository.save(
             Competition(name = name, participantType = ParticipantType.INDIVIDUAL),
         )
+
+    private fun generatedBracket(name: String): TournamentSetup {
+        val competition = createCompetition(name)
+        val competitionId = requireNotNull(competition.id)
+        val participantIds = (1..4).map { index ->
+            requireNotNull(participantRepository.save(Participant(competitionId, "$name $index")).id)
+        }
+        return TournamentSetup(competitionId, participantIds, matchService.generate(competitionId))
+    }
+
+    private fun completedTournament(name: String): TournamentSetup {
+        val setup = generatedBracket(name)
+        matchService.submitResult(
+            setup.competitionId,
+            setup.matches[0].id,
+            SubmitMatchResultRequest(setup.participantIds[0]),
+        )
+        matchService.submitResult(
+            setup.competitionId,
+            setup.matches[1].id,
+            SubmitMatchResultRequest(setup.participantIds[2]),
+        )
+        matchService.submitResult(
+            setup.competitionId,
+            setup.matches[2].id,
+            SubmitMatchResultRequest(setup.participantIds[0]),
+        )
+        return setup
+    }
+
+    private data class TournamentSetup(
+        val competitionId: Long,
+        val participantIds: List<Long>,
+        val matches: List<ac.sfj.afl3.dto.MatchResponse>,
+    )
 }

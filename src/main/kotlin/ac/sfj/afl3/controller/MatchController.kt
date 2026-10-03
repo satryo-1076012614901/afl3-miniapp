@@ -5,6 +5,7 @@ import ac.sfj.afl3.dto.SubmitMatchResultRequest
 import jakarta.validation.Valid
 import ac.sfj.afl3.service.MatchService
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -38,4 +39,14 @@ class MatchController(private val matchService: MatchService) {
         @PathVariable matchId: Long,
         @Valid @RequestBody request: SubmitMatchResultRequest,
     ): MatchResponse = matchService.submitResult(competitionId, matchId, request)
+
+    @PostMapping("/{matchId}/undo")
+    fun undoResult(
+        @PathVariable competitionId: Long,
+        @PathVariable matchId: Long,
+    ): MatchResponse = matchService.undoResult(competitionId, matchId)
+
+    @DeleteMapping
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun reset(@PathVariable competitionId: Long) = matchService.reset(competitionId)
 }

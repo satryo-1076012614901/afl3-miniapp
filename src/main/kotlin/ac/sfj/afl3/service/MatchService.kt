@@ -132,6 +132,53 @@ class MatchService(
         return match.toResponse()
     }
 
+    @Transactional
+    fun undoResult(competitionId: Long, matchId: Long): MatchResponse {
+        val competition = lockCompetition(competitionId)
+        val match = requireMatch(competitionId, matchId)
+        if (match.status != MatchStatus.COMPLETED) {
+            throw matchUndoNotAllowed()
+        }
+
+        val nextMatchId = match.nextMatchId
+        if (nextMatchId == null) {
+            competition.status = CompetitionStatus.IN_MATCH
+        } else {
+            val nextMatch = requireMatch(competitionId, nextMatchId)
+            if (nextMatch.status == MatchStatus.COMPLETED) {
+                throw matchUndoNotAllowed()
+            }
+            if (match.matchNumber % 2 == 1) {
+                nextMatch.participant1Id = null
+            } else {
+                nextMatch.participant2Id = null
+            }
+            nextMatch.status = MatchStatus.PENDING
+        }
+
+        match.winnerId = null
+        match.score1 = null
+        match.score2 = null
+        match.status = MatchStatus.READY
+        matchRepository.flush()
+        return match.toResponse()
+    }
+
+    @Transactional
+    fun reset(competitionId: Long) {
+        val competition = lockCompetition(competitionId)
+        if (competition.status != CompetitionStatus.IN_MATCH) {
+            throw ApiException(
+                HttpStatus.CONFLICT,
+                ApiErrorCode.COMPETITION_NOT_IN_MATCH,
+                "Competition is not in match",
+            )
+        }
+
+        competition.status = CompetitionStatus.OPEN
+        matchRepository.deleteAllByCompetitionId(competitionId)
+    }
+
     fun findAll(competitionId: Long): List<MatchResponse> {
         requireCompetition(competitionId)
         return matchRepository.findAllByCompetitionIdOrderByRoundAscMatchNumberAsc(competitionId)
@@ -155,4 +202,10 @@ class MatchService(
     private fun requireMatch(competitionId: Long, matchId: Long) =
         matchRepository.findByIdAndCompetitionId(matchId, competitionId)
             ?: throw ResourceNotFoundException("Match", matchId)
+
+    private fun matchUndoNotAllowed() = ApiException(
+        HttpStatus.CONFLICT,
+        ApiErrorCode.MATCH_UNDO_NOT_ALLOWED,
+        "Match result cannot be undone",
+    )
 }
