@@ -1,0 +1,248 @@
+{
+  "info": {
+    "_postman_id": "8e5a297d-87e8-4bde-92ab-5edbe8a91e58",
+    "name": "Mini Competition Manager API",
+    "description": "API collection for system, competition, participant, and match flows. Select an environment that defines `host`, or use the collection default.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "host", "value": "http://localhost:8080", "type": "string" },
+    { "key": "competitionId", "value": "", "type": "string" },
+    { "key": "participant1Id", "value": "", "type": "string" },
+    { "key": "participant2Id", "value": "", "type": "string" },
+    { "key": "participant3Id", "value": "", "type": "string" },
+    { "key": "participant4Id", "value": "", "type": "string" },
+    { "key": "match1Id", "value": "", "type": "string" },
+    { "key": "match2Id", "value": "", "type": "string" },
+    { "key": "finalMatchId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "System Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{host}}/system/status",
+            "description": "Checks application and database availability."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Competition",
+      "item": [
+        {
+          "name": "Create Competition",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('competitionId', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Friday Tournament\",\n  \"participantType\": \"INDIVIDUAL\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{host}}/api/competitions"
+          }
+        },
+        {
+          "name": "List Competitions",
+          "request": { "method": "GET", "header": [], "url": "{{host}}/api/competitions" }
+        },
+        {
+          "name": "Get Competition",
+          "request": { "method": "GET", "header": [], "url": "{{host}}/api/competitions/{{competitionId}}" }
+        },
+        {
+          "name": "Update Competition",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Friday Tournament Updated\",\n  \"participantType\": \"INDIVIDUAL\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{host}}/api/competitions/{{competitionId}}"
+          }
+        },
+        {
+          "name": "Delete Competition",
+          "request": { "method": "DELETE", "header": [], "url": "{{host}}/api/competitions/{{competitionId}}" }
+        }
+      ]
+    },
+    {
+      "name": "Participant",
+      "item": [
+        {
+          "name": "Create Participant 1",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["if (pm.response.code === 201) pm.collectionVariables.set('participant1Id', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Player 1\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{host}}/api/competitions/{{competitionId}}/participants"
+          }
+        },
+        {
+          "name": "Create Participant 2",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["if (pm.response.code === 201) pm.collectionVariables.set('participant2Id', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Player 2\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{host}}/api/competitions/{{competitionId}}/participants"
+          }
+        },
+        {
+          "name": "Create Participant 3",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["if (pm.response.code === 201) pm.collectionVariables.set('participant3Id', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Player 3\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{host}}/api/competitions/{{competitionId}}/participants"
+          }
+        },
+        {
+          "name": "Create Participant 4",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["if (pm.response.code === 201) pm.collectionVariables.set('participant4Id', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Player 4\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{host}}/api/competitions/{{competitionId}}/participants"
+          }
+        },
+        {
+          "name": "List Participants",
+          "request": { "method": "GET", "header": [], "url": "{{host}}/api/competitions/{{competitionId}}/participants" }
+        },
+        {
+          "name": "Get Participant",
+          "request": { "method": "GET", "header": [], "url": "{{host}}/api/competitions/{{competitionId}}/participants/{{participant1Id}}" }
+        },
+        {
+          "name": "Update Participant",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Player 1 Updated\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{host}}/api/competitions/{{competitionId}}/participants/{{participant1Id}}"
+          }
+        },
+        {
+          "name": "Delete Participant",
+          "request": { "method": "DELETE", "header": [], "url": "{{host}}/api/competitions/{{competitionId}}/participants/{{participant1Id}}" }
+        }
+      ]
+    },
+    {
+      "name": "Match",
+      "item": [
+        {
+          "name": "Generate Bracket",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const matches = pm.response.json();",
+                  "  const match1 = matches.find(match => match.round === 1 && match.matchNumber === 1);",
+                  "  const match2 = matches.find(match => match.round === 1 && match.matchNumber === 2);",
+                  "  const finalMatch = matches.find(match => match.nextMatchId === null);",
+                  "  if (match1) pm.collectionVariables.set('match1Id', match1.id);",
+                  "  if (match2) pm.collectionVariables.set('match2Id', match2.id);",
+                  "  if (finalMatch) pm.collectionVariables.set('finalMatchId', finalMatch.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{host}}/api/competitions/{{competitionId}}/matches"
+          }
+        },
+        {
+          "name": "List Matches",
+          "request": { "method": "GET", "header": [], "url": "{{host}}/api/competitions/{{competitionId}}/matches" }
+        },
+        {
+          "name": "Get Match",
+          "request": { "method": "GET", "header": [], "url": "{{host}}/api/competitions/{{competitionId}}/matches/{{match1Id}}" }
+        },
+        {
+          "name": "Submit Match 1 Result",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"winnerId\": {{participant1Id}},\n  \"score1\": 21,\n  \"score2\": 10\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{host}}/api/competitions/{{competitionId}}/matches/{{match1Id}}/result"
+          }
+        },
+        {
+          "name": "Submit Match 2 Result",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"winnerId\": {{participant3Id}},\n  \"score1\": 21,\n  \"score2\": 15\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{host}}/api/competitions/{{competitionId}}/matches/{{match2Id}}/result"
+          }
+        },
+        {
+          "name": "Submit Final Result",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"winnerId\": {{participant1Id}},\n  \"score1\": 21,\n  \"score2\": 18\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{host}}/api/competitions/{{competitionId}}/matches/{{finalMatchId}}/result"
+          }
+        },
+        {
+          "name": "Undo Match Result",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{host}}/api/competitions/{{competitionId}}/matches/{{match1Id}}/undo"
+          }
+        },
+        {
+          "name": "Reset Bracket",
+          "request": { "method": "DELETE", "header": [], "url": "{{host}}/api/competitions/{{competitionId}}/matches" }
+        }
+      ]
+    }
+  ]
+}

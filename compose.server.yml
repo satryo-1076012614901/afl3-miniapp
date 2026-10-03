@@ -28,14 +28,10 @@ services:
     environment:
       APP_ENV: ${APP_ENV:?APP_ENV belum di-set}
       DB_SCHEMA: ${DB_SCHEMA:?DB_SCHEMA belum di-set}
-      DB_RW_URL: ${DB_RW_URL:?DB_RW_URL belum di-set}
-      DB_RW_USERNAME: ${DB_RW_USERNAME:?DB_RW_USERNAME belum di-set}
-      DB_RW_PASSWORD: ${DB_RW_PASSWORD:?DB_RW_PASSWORD belum di-set}
-      DB_RO_URL: ${DB_RO_URL:?DB_RO_URL belum di-set}
-      DB_RO_USERNAME: ${DB_RO_USERNAME:?DB_RO_USERNAME belum di-set}
-      DB_RO_PASSWORD: ${DB_RO_PASSWORD:?DB_RO_PASSWORD belum di-set}
-      DB_RW_POOL_SIZE: ${DB_RW_POOL_SIZE:-10}
-      DB_RO_POOL_SIZE: ${DB_RO_POOL_SIZE:-10}
+      DB_URL: ${DB_URL:?DB_URL belum di-set}
+      DB_USERNAME: ${DB_USERNAME:?DB_USERNAME belum di-set}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD belum di-set}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
     networks:
       - traefik
     labels:

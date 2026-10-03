@@ -38,13 +38,9 @@ services:
       dockerfile: Dockerfile
     image: afl3:local
     environment:
-      DB_RW_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
-      DB_RW_USERNAME: ${POSTGRES_USER}
-      DB_RW_PASSWORD: ${POSTGRES_PASSWORD}
-      # Lokal hanya ada satu instance PostgreSQL; pool RO diarahkan ke instance yang sama.
-      DB_RO_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
-      DB_RO_USERNAME: ${POSTGRES_USER}
-      DB_RO_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
       # Khusus lokal: tampilkan detail komponen health (db, diskSpace, dst.).
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
     ports:

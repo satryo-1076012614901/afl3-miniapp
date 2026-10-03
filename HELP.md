@@ -13,7 +13,7 @@ Backend REST API untuk aplikasi Android **Mini Competition Manager**, yaitu peng
 | JDK | 25 (Temurin) |
 | Spring Boot | 4.1.1 (Web MVC, Data JPA, Validation, Actuator) |
 | Migrasi schema | Flyway |
-| Database | PostgreSQL 16 (server: 16.14, endpoint read-write dan read-only terpisah) |
+| Database | PostgreSQL 16 (server: 16.14, satu datasource per environment) |
 | Build | Gradle 9.7.1 (wrapper) |
 
 ## Struktur package (MVC)
@@ -21,7 +21,7 @@ Backend REST API untuk aplikasi Android **Mini Competition Manager**, yaitu peng
 ```plain
 src/main/kotlin/ac/sfj/afl3/
 ├── Afl3Application.kt
-├── config/         # Konfigurasi (DataSourceConfig: routing RW/RO)
+├── config/         # Konfigurasi Spring
 ├── controller/     # REST endpoint
 ├── service/        # Business logic dan batas transaksi
 ├── repository/     # Akses data
@@ -33,9 +33,9 @@ src/main/kotlin/ac/sfj/afl3/
 Aturan antar-layer:
 
 - `controller` hanya memanggil `service` dan mengembalikan `dto`; controller tidak mengakses `repository` secara langsung.
-- `service` menentukan batas transaksi (`@Transactional` / `@Transactional(readOnly = true)`), sehingga service juga menentukan pool RW atau RO yang dipakai.
+- `service` menentukan batas transaksi (`@Transactional` / `@Transactional(readOnly = true)`); seluruh transaksi memakai datasource yang sama.
 - Entity JPA tidak dikembalikan langsung ke client; petakan ke `dto` di service.
-- Error dilempar sebagai exception (mis. `ResourceNotFoundException`) dan diubah menjadi response `ProblemDetail` (RFC 9457) oleh `GlobalExceptionHandler`.
+- Error dilempar sebagai exception dan diubah oleh `GlobalExceptionHandler` menjadi body standar `{"code":"<KODE>","message":"<pesan>"}` sesuai katalog error API. Handler awal masih memakai `ProblemDetail` dan harus disesuaikan sebelum endpoint bisnis diimplementasikan.
 
 Setiap modul menambahkan file pada layer yang sesuai, misalnya `controller/CompetitionController.kt`, `service/CompetitionService.kt`, `repository/CompetitionRepository.kt`, `domain/Competition.kt`, dan `dto/CompetitionDto.kt`.
 
@@ -59,14 +59,11 @@ Saat dijalankan dari IDE/Gradle, Spring Boot membaca `.env` melalui `spring.conf
 
 | Variabel | Wajib | Keterangan |
 |---|---|---|
-| `DB_RW_URL` | Ya | JDBC URL endpoint read-write, mis. `jdbc:postgresql://<host>:5432/miniapp_db` |
-| `DB_RW_USERNAME` | Ya | Username endpoint read-write |
-| `DB_RW_PASSWORD` | Ya | Password endpoint read-write |
-| `DB_RO_URL` | Tidak | JDBC URL endpoint read-only; jika tidak didefinisikan, memakai `DB_RW_URL` |
-| `DB_RO_USERNAME` | Tidak | Jika tidak didefinisikan, memakai `DB_RW_USERNAME` |
-| `DB_RO_PASSWORD` | Tidak | Jika tidak didefinisikan, memakai `DB_RW_PASSWORD` |
+| `DB_URL` | Ya | JDBC URL PostgreSQL, mis. `jdbc:postgresql://<host>:5432/miniapp_db` |
+| `DB_USERNAME` | Ya | Username database aplikasi |
+| `DB_PASSWORD` | Ya | Password database aplikasi |
 | `DB_SCHEMA` | Tidak | Schema PostgreSQL milik environment, default `public`. Server: `production` / `develop` |
-| `DB_RW_POOL_SIZE` / `DB_RO_POOL_SIZE` | Tidak | Ukuran pool Hikari, default `10` |
+| `DB_POOL_SIZE` | Tidak | Ukuran pool Hikari, default `10` |
 | `APP_ENV` | Tidak | Nama environment (`local`, `develop`, `production`), default `local` |
 | `SERVER_PORT` | Tidak | Port HTTP aplikasi, default `8080` |
 | `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | Ya (compose lokal) | Database, user, dan password PostgreSQL lokal |
@@ -74,8 +71,6 @@ Saat dijalankan dari IDE/Gradle, Spring Boot membaca `.env` melalui `spring.conf
 | `APP_PORT` | Tidak | Port aplikasi di host saat dijalankan via compose lokal, default `8080` |
 | `COMPOSE_PROJECT_NAME`, `API_HOST`, `APP_IMAGE` | Ya (server) | Nama project compose, host Traefik, dan image GHCR (lihat *Deploy ke server*) |
 | `APP_MEM_LIMIT` | Ya (server) | Batas memori container, mis. `768m`. JVM memakai maksimal 75% dari nilai ini sebagai heap |
-
-Variabel opsional yang ditulis dengan nilai kosong (mis. `DB_RO_URL=`) dianggap bernilai string kosong, bukan tidak didefinisikan. Untuk memakai nilai default, hapus atau jadikan komentar baris tersebut.
 
 Untuk development lokal, salin template yang sudah di-commit:
 
@@ -119,7 +114,7 @@ docker compose -f compose.local.yml down      # tambahkan -v untuk menghapus dat
 
 ## Endpoint uji coba
 
-`GET /system/status` memastikan aplikasi berjalan dan kedua endpoint database dapat diakses. Pengecekan read-write dijalankan dalam transaksi biasa (pool RW), sedangkan pengecekan read-only dijalankan dalam transaksi `readOnly = true` (pool RO).
+`GET /system/status` memastikan aplikasi dan datasource PostgreSQL dapat diakses.
 
 | Environment | URL |
 |---|---|
@@ -127,8 +122,8 @@ docker compose -f compose.local.yml down      # tambahkan -v untuk menghapus dat
 | Develop | `https://api.vispro.satryo.pro/develop/system/status` |
 | Production | `https://api.vispro.satryo.pro/production/system/status` |
 
-- HTTP `200` bila `status` = `UP` (RW dan RO dapat diakses).
-- HTTP `503` bila salah satu `DOWN`. Field `error` hanya berisi nama kelas penyebab; detail lengkap ada di log aplikasi.
+- HTTP `200` bila `status` = `UP`.
+- HTTP `503` bila database tidak dapat diakses. Field `error` hanya berisi nama kelas penyebab; detail lengkap ada di log aplikasi.
 
 Contoh response (nilai bervariasi):
 
@@ -139,23 +134,108 @@ Contoh response (nilai bervariasi):
   "environment": "production",
   "timestamp": "2026-09-29T13:00:00Z",
   "database": {
-    "readWrite": {
-      "status": "UP", "latencyMs": 4, "database": "miniapp_db", "schema": "production",
-      "serverVersion": "16.14", "readOnlyTransaction": false, "inRecovery": false, "error": null
-    },
-    "readOnly": {
-      "status": "UP", "latencyMs": 5, "database": "miniapp_db", "schema": "production",
-      "serverVersion": "16.14", "readOnlyTransaction": true, "inRecovery": true, "error": null
-    }
+    "status": "UP", "latencyMs": 4, "database": "miniapp_db", "schema": "production",
+    "serverVersion": "16.14", "error": null
   }
 }
 ```
 
-Cara membaca hasil pengecekan RO:
+## Kontrak API aplikasi
 
-- `readOnlyTransaction: true` pada `readOnly` menunjukkan pengecekan berjalan di dalam transaksi read-only. Nilai ini **tidak** membuktikan koneksi berasal dari pool RO, karena koneksi dari pool RW pun di-set read-only saat berada di transaksi read-only.
-- Bukti koneksi benar-benar menuju endpoint RO adalah `inRecovery: true` pada `readOnly` (server replika/hot standby), sementara `readWrite` bernilai `false`. Jika `readOnly` juga `false`, endpoint RO sebenarnya server primary.
-- Di lokal, kedua pool mengarah ke instance PostgreSQL yang sama, sehingga `inRecovery` selalu `false`.
+Bagian ini merangkum **Mini Competition Manager — Daftar API, revisi 29 September 2026** dan menjadi acuan implementasi backend serta Android. Semua endpoint aplikasi memakai prefix `/api`; endpoint operasional `/system/status` dan `/actuator/health` tidak memakai prefix tersebut.
+
+### Endpoint
+
+| Modul | Method | Route | Sukses | Fungsi |
+|---|---|---|---|---|
+| Competition | `GET` | `/api/competitions` | `200 OK` | Daftar kompetisi |
+| Competition | `POST` | `/api/competitions` | `201 Created` | Membuat kompetisi berstatus `OPEN` |
+| Competition | `GET` | `/api/competitions/{competitionId}` | `200 OK` | Detail kompetisi |
+| Competition | `PUT` | `/api/competitions/{competitionId}` | `200 OK` | Mengubah kompetisi saat `OPEN` |
+| Competition | `DELETE` | `/api/competitions/{competitionId}` | `204 No Content` | Menghapus kompetisi saat `OPEN` |
+| Participant | `GET` | `/api/competitions/{competitionId}/participants` | `200 OK` | Daftar peserta |
+| Participant | `POST` | `/api/competitions/{competitionId}/participants` | `201 Created` | Mendaftarkan peserta saat `OPEN` |
+| Participant | `GET` | `/api/competitions/{competitionId}/participants/{participantId}` | `200 OK` | Detail peserta |
+| Participant | `PUT` | `/api/competitions/{competitionId}/participants/{participantId}` | `200 OK` | Mengubah peserta saat `OPEN` |
+| Participant | `DELETE` | `/api/competitions/{competitionId}/participants/{participantId}` | `204 No Content` | Menghapus peserta saat `OPEN` |
+| Match | `POST` | `/api/competitions/{competitionId}/matches` | `201 Created` | Membuat seluruh bracket |
+| Match | `GET` | `/api/competitions/{competitionId}/matches` | `200 OK` | Daftar match dalam urutan bracket |
+| Match | `GET` | `/api/competitions/{competitionId}/matches/{matchId}` | `200 OK` | Detail match |
+| Match | `POST` | `/api/competitions/{competitionId}/matches/{matchId}/result` | `200 OK` | Menyimpan hasil dan memajukan pemenang |
+| Match | `POST` | `/api/competitions/{competitionId}/matches/{matchId}/undo` | `200 OK` | Membatalkan hasil match |
+| Match | `DELETE` | `/api/competitions/{competitionId}/matches` | `204 No Content` | Menghapus bracket dan kembali ke `OPEN` |
+
+### Model dan enum
+
+- `Competition`: `id`, `name`, `participantType`, `status`, `createdAt`, dan `updatedAt`.
+- `Participant`: `id`, `competitionId`, `name`, `members`, `createdAt`, dan `updatedAt`. `members` hanya dipakai untuk kompetisi `TEAM`; setiap member memiliki `name`.
+- `Match`: `id`, `competitionId`, `participant1Id`, `participant2Id`, `winnerId`, `nextMatchId`, `round`, `matchNumber`, `score1`, `score2`, `status`, `createdAt`, dan `updatedAt`. ID peserta, pemenang, dan next match nullable sesuai posisi bracket.
+- `ParticipantType`: `INDIVIDUAL`, `TEAM`.
+- `CompetitionStatus`: `OPEN`, `IN_MATCH`, `COMPLETED`.
+- `MatchStatus`: `PENDING`, `READY`, `COMPLETED`.
+
+Request membuat atau mengubah kompetisi berisi `name` dan `participantType`. Request membuat atau mengubah peserta berisi `name` serta `members` bila tipenya `TEAM`. Request submit hasil berisi `winnerId` dan boleh menyertakan `score1` serta `score2`; score yang diberikan harus bilangan bulat non-negatif.
+
+### Schema database yang disepakati
+
+Schema mengikuti proposal dan terdiri dari tiga tabel berikut. Nama kolom memakai snake_case; seluruh timestamp bertipe `timestamptz NOT NULL`.
+
+| Tabel | Kolom | Tipe dan constraint |
+|---|---|---|
+| `competition` | `id` | `bigint`, primary key |
+|  | `name` | `varchar NOT NULL` |
+|  | `participant_type` | `varchar NOT NULL`; `INDIVIDUAL` atau `TEAM` |
+|  | `status` | `varchar NOT NULL`; `OPEN`, `IN_MATCH`, atau `COMPLETED` |
+|  | `created_at`, `updated_at` | `timestamptz NOT NULL` |
+| `participant` | `id` | `bigint`, primary key |
+|  | `competition_id` | `bigint NOT NULL`, foreign key ke `competition`, `ON DELETE CASCADE` |
+|  | `name` | `varchar NOT NULL`, unik pada `(competition_id, name)` |
+|  | `members` | `jsonb NULL`; array anggota tim, atau `null` untuk individu |
+|  | `created_at`, `updated_at` | `timestamptz NOT NULL` |
+| `match` | `id` | `bigint`, primary key |
+|  | `competition_id` | `bigint NOT NULL`, foreign key ke `competition` |
+|  | `participant_1_id`, `participant_2_id` | `bigint NULL`, foreign key ke `participant` |
+|  | `winner_id` | `bigint NULL`, foreign key ke `participant` |
+|  | `next_match_id` | `bigint NULL`, foreign key ke `match`; `null` untuk final |
+|  | `round` | `int NOT NULL`, dimulai dari 1 |
+|  | `match_number` | `int NOT NULL`, unik pada `(competition_id, round, match_number)` |
+|  | `score_1`, `score_2` | `int NULL` |
+|  | `status` | `varchar NOT NULL`; `PENDING`, `READY`, atau `COMPLETED` |
+|  | `created_at`, `updated_at` | `timestamptz NOT NULL` |
+
+Tidak ada kolom `champion_id` pada `competition`. Champion diperoleh dari `winner_id` match final yang sudah `COMPLETED`.
+
+### Aturan bisnis
+
+1. Kompetisi baru berstatus `OPEN`. Nama tidak boleh kosong.
+2. `participantType` tidak boleh diubah setelah kompetisi memiliki peserta.
+3. Peserta hanya dapat dibuat, diubah, atau dihapus saat kompetisi `OPEN`; nama peserta unik dalam satu kompetisi.
+4. Bracket MVP hanya dapat dibuat untuk tepat 4, 8, atau 16 peserta. Generate membuat seluruh match dalam satu transaksi, lalu mengubah kompetisi menjadi `IN_MATCH`.
+5. Match round pertama berstatus `READY`; match berikutnya `PENDING` sampai kedua slot terisi.
+6. Hasil hanya dapat dikirim ke match `READY`. `winnerId` harus sama dengan `participant1Id` atau `participant2Id` match tersebut.
+7. Submit mengubah match menjadi `COMPLETED` dan mengisi slot pemenang pada match berikutnya. Penyelesaian final mengubah kompetisi menjadi `COMPLETED`; champion adalah `winner_id` pada match final.
+8. Undo hanya diizinkan untuk match `COMPLETED` bila match berikutnya belum `COMPLETED`. Undo final mengembalikan kompetisi ke `IN_MATCH`.
+9. Reset menghapus seluruh match dan mengembalikan kompetisi ke `OPEN`.
+10. Generate, submit, undo, dan reset menyentuh beberapa record dan wajib atomik dalam satu transaksi tulis.
+
+### Error body dan katalog kode
+
+Seluruh error API memakai media type JSON dengan bentuk:
+
+```json
+{
+  "code": "MATCH_NOT_READY",
+  "message": "Match is not ready to receive a result"
+}
+```
+
+| HTTP | Kode |
+|---|---|
+| `400` | `VALIDATION_ERROR`, `INVALID_WINNER`, `MEMBERS_NOT_ALLOWED` |
+| `404` | `COMPETITION_NOT_FOUND`, `PARTICIPANT_NOT_FOUND`, `MATCH_NOT_FOUND` |
+| `409` | `COMPETITION_NOT_OPEN`, `COMPETITION_NOT_IN_MATCH`, `PARTICIPANT_TYPE_LOCKED`, `DUPLICATE_PARTICIPANT_NAME`, `INVALID_PARTICIPANT_COUNT`, `MATCH_NOT_READY`, `MATCH_UNDO_NOT_ALLOWED` |
+
+Validasi path bersifat hierarkis: participant atau match harus menjadi milik `competitionId` pada URL. Jika tidak, response menggunakan kode not-found untuk resource tersebut dan tidak membocorkan resource dari kompetisi lain.
 
 ## Docker image
 
@@ -173,9 +253,9 @@ Build dan jalankan image secara manual:
 ```bash
 docker build -t afl3:local .
 docker run --rm -p 8080:8080 \
-  -e DB_RW_URL=jdbc:postgresql://<host>:5432/miniapp_db \
-  -e DB_RW_USERNAME=<username> \
-  -e DB_RW_PASSWORD=<password> \
+  -e DB_URL=jdbc:postgresql://<host>:5432/miniapp_db \
+  -e DB_USERNAME=<username> \
+  -e DB_PASSWORD=<password> \
   afl3:local
 ```
 
@@ -211,18 +291,18 @@ Setiap environment memakai role PostgreSQL sendiri yang hanya berhak atas schema
 
 | Environment | Role | Schema (dimiliki role) | Password |
 |---|---|---|---|
-| Production | `afl3_production` | `production` | `DB_RW_PASSWORD` di `.env.production` |
-| Develop | `afl3_develop` | `develop` | `DB_RW_PASSWORD` di `.env.develop` |
+| Production | `afl3_production` | `production` | `DB_PASSWORD` di `.env.production` |
+| Develop | `afl3_develop` | `develop` | `DB_PASSWORD` di `.env.develop` |
 
-Jalankan **sekali** dengan `psql` di primary (endpoint RW) `miniapp_db` sebagai superuser (mis. `postgres`). Superuser dibutuhkan karena `CREATE ROLE` memerlukan hak superuser/`CREATEROLE`, dan `CREATE SCHEMA ... AUTHORIZATION` di PostgreSQL 16 mensyaratkan pelaksana dapat `SET ROLE` ke role tujuan.
+Jalankan **sekali** dengan `psql` pada database `miniapp_db` sebagai superuser (mis. `postgres`). Superuser dibutuhkan karena `CREATE ROLE` memerlukan hak superuser/`CREATEROLE`, dan `CREATE SCHEMA ... AUTHORIZATION` di PostgreSQL 16 mensyaratkan pelaksana dapat `SET ROLE` ke role tujuan.
 
 ```sql
 CREATE ROLE afl3_production LOGIN;
 CREATE ROLE afl3_develop    LOGIN;
 
 -- Password diisi lewat prompt (di-hash di sisi klien, tidak tercatat di log server).
--- afl3_production: DB_RW_PASSWORD dari .env.production
--- afl3_develop   : DB_RW_PASSWORD dari .env.develop
+-- afl3_production: DB_PASSWORD dari .env.production
+-- afl3_develop   : DB_PASSWORD dari .env.develop
 \password afl3_production
 \password afl3_develop
 
@@ -239,8 +319,7 @@ ALTER ROLE afl3_develop    SET search_path = develop;
 
 Catatan:
 
-- Jika endpoint RO adalah replika fisik (streaming replication), role dan schema ikut tereplikasi sehingga tidak perlu dibuat ulang di replika.
-- `pg_hba.conf` di primary dan replika harus mengizinkan role `afl3_production` dan `afl3_develop` dari IP node deploy. Aturan yang hanya menyebut user tertentu akan menolak role baru.
+- `pg_hba.conf` harus mengizinkan role `afl3_production` dan `afl3_develop` dari IP node deploy. Aturan yang hanya menyebut user tertentu akan menolak role baru.
 - User admin (`cred_db.md`) hanya dipakai untuk administrasi, tidak dipakai oleh aplikasi.
 
 ### Persiapan sebelum deploy pertama
@@ -253,24 +332,15 @@ Catatan:
 
 Container tidak mem-publish port ke host; seluruh akses melalui Traefik. Traefik hanya meneruskan trafik ke container yang berstatus `healthy`.
 
-## Routing koneksi read-write / read-only
+## Koneksi database dan transaksi
 
-Aplikasi memiliki dua pool koneksi (`afl3-rw` dan `afl3-ro`) di belakang `LazyConnectionDataSourceProxy` (lihat `config/DataSourceConfig.kt`). Pool dipilih berdasarkan sifat transaksi:
-
-| Konteks pemanggilan | Pool |
-|---|---|
-| `@Transactional(readOnly = true)` | RO |
-| `@Transactional` (default) | RW |
-| Tanpa transaksi | RW |
-| Method baca repository Spring Data (`findById`, `findAll`, dst.) yang dipanggil **tanpa** transaksi pembungkus | RO, karena `SimpleJpaRepository` menandai method baca dengan `@Transactional(readOnly = true)` |
-| Method baca repository di dalam transaksi `@Transactional` (bukan read-only) | RW, karena mengikuti transaksi yang sedang berjalan |
-| Flyway | RW (`@FlywayDataSource`) |
+Aplikasi memakai satu datasource dan satu pool Hikari per environment. Flyway, JPA, dan `JdbcTemplate` memakai datasource yang sama.
 
 Aturan untuk seluruh modul:
 
-1. **Read-after-write.** Jika endpoint RO berupa replika, datanya dapat tertinggal dari RW (*replication lag*). Pembacaan yang harus langsung melihat data yang baru ditulis wajib berada di dalam transaksi `@Transactional` yang sama dengan penulisannya, bukan di transaksi read-only terpisah atau di pemanggilan repository tanpa transaksi.
-2. Service yang murni membaca ditandai `@Transactional(readOnly = true)` agar beban baca diarahkan ke RO.
-3. `spring.jpa.open-in-view` dinonaktifkan. Akses relasi *lazy* harus selesai di dalam service (di dalam transaksi), bukan di controller.
+1. Batas transaksi berada di service. Gunakan `@Transactional(readOnly = true)` untuk operasi baca dan `@Transactional` untuk operasi tulis.
+2. Operasi lintas tabel yang harus atomik—generate bracket, submit hasil, undo, dan reset—berjalan dalam satu transaksi tulis.
+3. `spring.jpa.open-in-view` dinonaktifkan. Akses relasi *lazy* harus selesai di dalam service, bukan di controller.
 
 ## Migrasi database (Flyway)
 
@@ -299,3 +369,4 @@ Langkah kerja lengkap untuk tim ada di [`README.md`](README.md). Ringkasnya:
 
 - Workflow GitHub Actions (`.github/workflows/`).
 - Migration awal serta kode modul Competition, Participant, dan Match.
+- Implementasi error body `code`/`message` beserta pemetaan katalog kode error API.
