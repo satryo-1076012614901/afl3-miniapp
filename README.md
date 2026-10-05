@@ -119,7 +119,7 @@ Aturan tambahan:
 
 | Modul | Penanggung jawab | Branch | File yang dibuat |
 |---|---|---|---|
-| Competition | Satryo | `feature/competition` | `domain/Competition.kt`, `repository/CompetitionRepository.kt`, `service/CompetitionService.kt`, `controller/CompetitionController.kt`, `dto/CompetitionDto.kt`, migration `competition` |
+| Competition | Satryo | `feature/competition` | `domain/Competition.kt`, `domain/ParticipantType.kt`, `domain/CompetitionStatus.kt`, `repository/CompetitionRepository.kt`, `service/CompetitionService.kt`, `controller/CompetitionController.kt`, `dto/CompetitionDto.kt`, migration `V1__create_competition.sql` |
 | Participant | Jessy | `feature/participant` | `domain/Participant.kt`, `repository/ParticipantRepository.kt`, `service/ParticipantService.kt`, `controller/ParticipantController.kt`, `dto/ParticipantDto.kt`, migration `participant` |
 | Match | Fariz | `feature/match` | `domain/Match.kt`, `repository/MatchRepository.kt`, `service/MatchService.kt`, `controller/MatchController.kt`, `dto/MatchDto.kt`, migration `match` |
 
@@ -129,7 +129,7 @@ Jika tabel suatu modul memiliki foreign key ke tabel modul lain (mis. `participa
 
 ### 2.5 Contoh satu modul
 
-Contoh berikut adalah **ilustrasi** penempatan kode untuk modul Competition, bukan kontrak API lengkap. Field, validasi, status, serta response final wajib mengikuti [kontrak API di `HELP.md`](HELP.md#kontrak-api-aplikasi).
+Contoh berikut adalah **ilustrasi ringkas** penempatan kode, bukan kontrak API lengkap. Implementasi nyata modul Competition (termasuk `participantType`, `status`, dan aturan bisnisnya) dapat dilihat langsung di file-file yang tercantum pada tabel 2.4, beserta test-nya di `src/test/kotlin/ac/sfj/afl3/controller/CompetitionControllerTests.kt`. Field, validasi, status, serta response final wajib mengikuti [kontrak API di `HELP.md`](HELP.md#kontrak-api-aplikasi).
 
 **`src/main/resources/db/migration/V1__create_competition.sql`**
 

@@ -498,4 +498,4 @@ Langkah kerja lengkap untuk tim ada di [`README.md`](README.md). Ringkasnya:
 
 ## Belum tersedia
 
-- Migration awal serta kode modul Competition, Participant, dan Match.
+- Kode modul Participant dan Match beserta migration-nya.
