@@ -3,7 +3,7 @@
 Backend REST API untuk aplikasi Android **Mini Competition Manager**, yaitu pengelola turnamen *single-elimination*. Proyek ini merupakan tugas AFL3 Visual Programming.
 
 - Satu backend dengan tiga modul: **Competition**, **Participant**, dan **Match**. Setiap modul ditangani oleh satu anggota tim dan memiliki operasi CRUD ke database.
-- Bracket mendukung 2–16 peserta. Jumlah non-*power-of-two* memakai *bye* deterministik untuk seed awal berdasarkan urutan registrasi.
+- Bracket mendukung 2–16 peserta. Jumlah qualifier ganjil memakai *bye* deterministik tanpa memberikan *bye* dua ronde berturut-turut kepada qualifier yang sama.
 
 ## Stack
 
@@ -210,8 +210,8 @@ Tidak ada kolom `champion_id` pada `competition`. Champion diperoleh dari `winne
 1. Kompetisi baru berstatus `OPEN`. Nama tidak boleh kosong.
 2. `participantType` tidak boleh diubah setelah kompetisi memiliki peserta.
 3. Peserta hanya dapat dibuat, diubah, atau dihapus saat kompetisi `OPEN`; nama peserta unik dalam satu kompetisi.
-4. Bracket menerima 2–16 peserta dan memakai ukuran *power-of-two* berikutnya. Seed awal berdasarkan urutan registrasi menerima *bye*; match *bye* otomatis `COMPLETED` dan pemenangnya langsung maju. Generate membuat seluruh bracket dalam satu transaksi, lalu mengubah kompetisi menjadi `IN_MATCH`.
-5. Match round pertama berstatus `READY`; match berikutnya `PENDING` sampai kedua slot terisi.
+4. Bracket menerima 2–16 peserta tanpa menambah slot sampai ukuran *power-of-two*. Peserta dipasangkan menurut urutan registrasi; qualifier terakhir menerima *bye* saat jumlah qualifier ganjil. Jika qualifier itu mendapat *bye* pada ronde sebelumnya, posisi *bye* dialihkan ke qualifier eligible terdekat. Match *bye* otomatis `COMPLETED` saat pesertanya sudah diketahui dan pemenangnya langsung maju. Generate membuat seluruh bracket dalam satu transaksi, lalu mengubah kompetisi menjadi `IN_MATCH`.
+5. Match dengan dua peserta berstatus `READY`; match berikutnya `PENDING` sampai kedua slot terisi. Match *bye* yang pesertanya baru diketahui setelah source selesai otomatis menjadi `COMPLETED` tanpa submit manual.
 6. Hasil hanya dapat dikirim ke match `READY`. `winnerId` harus sama dengan `participant1Id` atau `participant2Id` match tersebut.
 7. Submit mengubah match menjadi `COMPLETED` dan mengisi slot pemenang pada match berikutnya. Penyelesaian final mengubah kompetisi menjadi `COMPLETED`; champion adalah `winner_id` pada match final.
 8. Undo hanya diizinkan untuk match `COMPLETED` bila match berikutnya belum `COMPLETED`. Undo final mengembalikan kompetisi ke `IN_MATCH`.

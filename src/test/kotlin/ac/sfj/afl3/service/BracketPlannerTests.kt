@@ -3,6 +3,7 @@ package ac.sfj.afl3.service
 import ac.sfj.afl3.domain.MatchStatus
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
@@ -29,22 +30,33 @@ class BracketPlannerTests {
     }
 
     @Test
-    fun `assigns byes to earliest seeds and advances them automatically`() {
+    fun `five participants get two byes without consecutive bye`() {
         val result = planner.create(listOf(10, 20, 30, 40, 50))
         val firstRound = result.filter { it.round == 1 }
         val secondRound = result.filter { it.round == 2 }
+        val final = result.single { it.round == 3 }
 
-        assertEquals(7, result.size)
-        assertEquals(listOf(10L, 20L, 30L), firstRound.take(3).map { it.winnerId })
-        assertEquals(List(3) { MatchStatus.COMPLETED }, firstRound.take(3).map { it.status })
-        assertNull(firstRound[0].participant2Id)
-        assertEquals(40, firstRound[3].participant1Id)
-        assertEquals(50, firstRound[3].participant2Id)
-        assertEquals(MatchStatus.READY, secondRound[0].status)
-        assertEquals(10, secondRound[0].participant1Id)
-        assertEquals(20, secondRound[0].participant2Id)
+        assertEquals(6, result.size)
+        assertEquals(3, firstRound.size)
+        assertEquals(2, secondRound.size)
+        assertEquals(2, result.count { it.nextMatch != null && it.participant2Id == null })
+
+        assertEquals(10, firstRound[0].participant1Id)
+        assertEquals(20, firstRound[0].participant2Id)
+        assertEquals(30, firstRound[1].participant1Id)
+        assertEquals(40, firstRound[1].participant2Id)
+        assertEquals(50, firstRound[2].winnerId)
+        assertEquals(MatchStatus.COMPLETED, firstRound[2].status)
+
+        assertEquals(NextMatchPosition(2, 1, MatchSlot.ONE), firstRound[0].nextMatch)
+        assertEquals(NextMatchPosition(2, 2, MatchSlot.ONE), firstRound[1].nextMatch)
+        assertEquals(NextMatchPosition(2, 1, MatchSlot.TWO), firstRound[2].nextMatch)
+        assertEquals(50, secondRound[0].participant2Id)
+        assertEquals(MatchStatus.PENDING, secondRound[0].status)
         assertEquals(MatchStatus.PENDING, secondRound[1].status)
-        assertEquals(30, secondRound[1].participant1Id)
+        assertEquals(NextMatchPosition(3, 1, MatchSlot.ONE), secondRound[0].nextMatch)
+        assertEquals(NextMatchPosition(3, 1, MatchSlot.TWO), secondRound[1].nextMatch)
+        assertEquals(MatchStatus.PENDING, final.status)
     }
 
     @Test
@@ -90,6 +102,29 @@ class BracketPlannerTests {
         assertEquals(NextMatchPosition(2, 1, MatchSlot.TWO), firstRound[1].nextMatch)
         assertEquals(NextMatchPosition(2, 2, MatchSlot.ONE), firstRound[2].nextMatch)
         assertEquals(NextMatchPosition(2, 2, MatchSlot.TWO), firstRound[3].nextMatch)
+    }
+
+    @Test
+    fun `brackets from two through sixteen never contain consecutive byes`() {
+        for (participantCount in 2..16) {
+            val result = planner.create((1L..participantCount.toLong()).toList())
+            val incomingCounts = result.mapNotNull { it.nextMatch }
+                .groupingBy { it.round to it.matchNumber }
+                .eachCount()
+            val byPosition = result.associateBy { it.round to it.matchNumber }
+
+            fun PlannedMatch.isBye(): Boolean = if (round == 1) {
+                listOf(participant1Id, participant2Id).count { it != null } == 1
+            } else {
+                incomingCounts[round to matchNumber] == 1
+            }
+
+            assertEquals(participantCount - 1, result.count { !it.isBye() })
+            result.filter { it.isBye() }.forEach { bye ->
+                val target = bye.nextMatch?.let { byPosition[it.round to it.matchNumber] }
+                assertFalse(target?.isBye() == true, "participantCount=$participantCount")
+            }
+        }
     }
 
     @Test
