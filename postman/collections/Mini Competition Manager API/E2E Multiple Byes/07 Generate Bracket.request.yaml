@@ -1,0 +1,18 @@
+$kind: http-request
+url: '{{host}}/api/competitions/{{competitionId}}/matches'
+method: POST
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('five participants produce three automatic byes', function () {
+        pm.response.to.have.status(201);
+        const matches = pm.response.json();
+        pm.expect(matches).to.have.lengthOf(7);
+        const byes = matches.filter(match => match.round === 1 && match.status === 'COMPLETED');
+        pm.expect(byes).to.have.lengthOf(3);
+        byes.forEach(match => pm.expect(match.winnerId).to.be.a('number'));
+        const readySecondRound = matches.filter(match => match.round === 2 && match.status === 'READY');
+        pm.expect(readySecondRound).to.have.lengthOf(1);
+      });
+    language: text/javascript
+order: 7000
