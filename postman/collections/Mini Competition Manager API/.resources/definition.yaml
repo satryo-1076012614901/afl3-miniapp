@@ -11,3 +11,11 @@ variables:
     value: ''
   - key: winnerId
     value: ''
+  - key: participant1Id
+    value: ''
+  - key: participant2Id
+    value: ''
+  - key: participant3Id
+    value: ''
+  - key: participant4Id
+    value: ''
