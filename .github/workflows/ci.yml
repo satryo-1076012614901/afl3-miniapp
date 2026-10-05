@@ -1,0 +1,50 @@
+# CI: build dan test untuk setiap Pull Request ke main/deploy.
+# Juga dipanggil oleh deploy.yml sebelum image di-build (workflow_call).
+# Selalu berjalan di runner GitHub (bukan self-hosted), karena menjalankan kode dari PR.
+name: CI
+
+on:
+  pull_request:
+    branches: [main, deploy]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build dan test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      # PostgreSQL untuk test contextLoads() (Flyway + Hibernate validate).
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: miniapp_db
+          POSTGRES_USER: miniapp
+          POSTGRES_PASSWORD: miniapp_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U miniapp -d miniapp_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_URL: jdbc:postgresql://localhost:5432/miniapp_db
+      DB_USERNAME: miniapp
+      DB_PASSWORD: miniapp_ci
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Build dan test
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon build

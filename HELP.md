@@ -35,7 +35,7 @@ Aturan antar-layer:
 - `controller` hanya memanggil `service` dan mengembalikan `dto`; controller tidak mengakses `repository` secara langsung.
 - `service` menentukan batas transaksi (`@Transactional` / `@Transactional(readOnly = true)`); seluruh transaksi memakai datasource yang sama.
 - Entity JPA tidak dikembalikan langsung ke client; petakan ke `dto` di service.
-- Error dilempar sebagai exception dan diubah oleh `GlobalExceptionHandler` menjadi body standar `{"code":"<KODE>","message":"<pesan>"}` sesuai katalog error API. Handler awal masih memakai `ProblemDetail` dan harus disesuaikan sebelum endpoint bisnis diimplementasikan.
+- Error dilempar sebagai exception (`ApiException` atau turunannya, mis. `ResourceNotFoundException`) dan diubah oleh `GlobalExceptionHandler` menjadi body standar `{"code":"<KODE>","message":"<pesan>"}` sesuai katalog error API (lihat *Kontrak API aplikasi → Error body dan katalog kode*).
 
 Setiap modul menambahkan file pada layer yang sesuai, misalnya `controller/CompetitionController.kt`, `service/CompetitionService.kt`, `repository/CompetitionRepository.kt`, `domain/Competition.kt`, dan `dto/CompetitionDto.kt`.
 
@@ -52,8 +52,8 @@ Seluruh konfigurasi dibaca dari environment variable.
 |---|---|---|
 | `.env.example` | Template `.env` lokal | Ya |
 | `.env` | Development lokal (`compose.local.yml` dan run dari IDE/Gradle), salinan dari `.env.example` | Tidak |
-| `.env.production` | Deploy `/production` di server (`compose.server.yml`) | Tidak |
-| `.env.develop` | Deploy `/develop` di server (`compose.server.yml`) | Tidak |
+| `.env.production` | Deploy manual `/production` dari laptop (`compose.server.yml` via `DOCKER_HOST`); tidak disalin ke node | Tidak |
+| `.env.develop` | Deploy manual `/develop` dari laptop (`compose.server.yml` via `DOCKER_HOST`); tidak disalin ke node | Tidak |
 
 Saat dijalankan dari IDE/Gradle, Spring Boot membaca `.env` melalui `spring.config.import: optional:file:.env[.properties]`. Environment variable yang di-set langsung (container, CI) selalu lebih diprioritaskan daripada isi `.env`.
 
@@ -237,6 +237,35 @@ Seluruh error API memakai media type JSON dengan bentuk:
 
 Validasi path bersifat hierarkis: participant atau match harus menjadi milik `competitionId` pada URL. Jika tidak, response menggunakan kode not-found untuk resource tersebut dan tidak membocorkan resource dari kompetisi lain.
 
+#### Implementasi di kode
+
+Kontrak error diimplementasikan di package `exception/`:
+
+- `ApiError.kt` berisi `ApiErrorResponse` (body error), enum `ApiErrorCode` (seluruh kode error), dan `ApiException`.
+- `ResourceNotFoundException.kt` adalah turunan `ApiException` untuk data yang tidak ditemukan.
+- `GlobalExceptionHandler.kt` mengubah exception menjadi response.
+
+| Sumber error | HTTP | Kode |
+|---|---|---|
+| `ApiException(status, code, message)` yang dilempar service | Sesuai `status` | Sesuai `code` |
+| `ResourceNotFoundException("Competition" / "Participant" / "Match", id)` | `404` | `COMPETITION_NOT_FOUND` / `PARTICIPANT_NOT_FOUND` / `MATCH_NOT_FOUND` |
+| Error standar Spring MVC berstatus 400 (gagal validasi `@Valid`, JSON tidak valid, tipe parameter salah) | `400` | `VALIDATION_ERROR` |
+| Error standar Spring MVC lainnya (route tidak ada, method tidak didukung, dst.) | Status aslinya | `HTTP_ERROR` |
+| `DataIntegrityViolationException` (pelanggaran constraint database) | `409` | `DATA_INTEGRITY_VIOLATION` |
+| Exception lain yang tidak tertangani | `500` | `INTERNAL_SERVER_ERROR` |
+
+`DATA_INTEGRITY_VIOLATION`, `HTTP_ERROR`, dan `INTERNAL_SERVER_ERROR` adalah kode tambahan dari handler, di luar katalog kontrak API. Untuk error validasi, `message` saat ini generik (`Request tidak valid`) dan belum menyebutkan field yang salah.
+
+Contoh di service:
+
+```kotlin
+// Data tidak ditemukan -> 404 COMPETITION_NOT_FOUND
+throw ResourceNotFoundException("Competition", competitionId)
+
+// Pelanggaran aturan bisnis -> 409 COMPETITION_NOT_OPEN
+throw ApiException(HttpStatus.CONFLICT, ApiErrorCode.COMPETITION_NOT_OPEN, "Competition is not open")
+```
+
 ## Docker image
 
 `Dockerfile` memakai dua stage:
@@ -274,16 +303,17 @@ Mekanisme routing:
 2. Middleware `StripPrefix` melepas `/<env>` sebelum request diteruskan ke container, sehingga aplikasi selalu melayani path yang sama (`/system/status`, `/actuator/health`, dst.).
 3. Traefik mengirim header `X-Forwarded-Prefix: /<env>`. Aplikasi memakai `server.forward-headers-strategy: framework`, sehingga URL yang dibentuk aplikasi tetap menyertakan prefix.
 
-Kedua environment memakai satu file `compose.server.yml`. Environment dipilih melalui file env dan nama project:
+Kedua environment memakai satu file `compose.server.yml`. Perintah compose dijalankan **dari luar node**, yaitu dari runner GitHub atau laptop, dengan `DOCKER_HOST=ssh://afl3-node`. Docker CLI mengirim perintah ke Docker daemon di node melalui SSH. Konsekuensinya:
 
-```bash
-docker compose -p afl3-production --env-file .env.production -f compose.server.yml up -d
-docker compose -p afl3-develop    --env-file .env.develop    -f compose.server.yml up -d
-```
+- Tidak ada file compose, file env, maupun kredensial GHCR yang disimpan di node.
+- Image di-pull oleh node memakai kredensial GHCR milik sisi yang menjalankan compose, sehingga node tidak perlu `docker login`.
+- Nilai env tetap tersimpan di konfigurasi container dan dapat dilihat dengan `docker inspect` oleh pengguna yang punya akses Docker di node. Hal ini tidak dapat dihindari selama konfigurasi dikirim melalui environment variable.
 
-Nama project (`-p` dan `COMPOSE_PROJECT_NAME`) wajib berbeda per environment. Jika sama, menjalankan salah satu environment akan menimpa container environment lainnya.
+Nama project (`-p` / `COMPOSE_PROJECT_NAME`) wajib berbeda per environment. Jika sama, menjalankan salah satu environment akan menimpa container environment lainnya.
 
-`compose.server.yml` memakai `pull_policy: always`, sehingga setiap `up -d` selalu menarik image terbaru. Tanpa pengaturan ini, tag `:production` / `:develop` yang sudah ada di node tidak akan diperbarui dan versi lama tetap berjalan.
+`compose.server.yml` memakai `pull_policy: always`, sehingga setiap `up -d` selalu menarik image dari registry. Tanpa pengaturan ini, tag mutable (`:production` / `:develop`) yang sudah ada di node tidak akan diperbarui.
+
+Container tidak mem-publish port ke host; seluruh akses melalui Traefik. Traefik hanya meneruskan trafik ke container yang berstatus `healthy`.
 
 ### Role database per environment
 
@@ -291,8 +321,8 @@ Setiap environment memakai role PostgreSQL sendiri yang hanya berhak atas schema
 
 | Environment | Role | Schema (dimiliki role) | Password |
 |---|---|---|---|
-| Production | `afl3_production` | `production` | `DB_PASSWORD` di `.env.production` |
-| Develop | `afl3_develop` | `develop` | `DB_PASSWORD` di `.env.develop` |
+| Production | `afl3_production` | `production` | `DB_PASSWORD` di `.env.production` = secret `PRODUCTION_DB_PASSWORD` |
+| Develop | `afl3_develop` | `develop` | `DB_PASSWORD` di `.env.develop` = secret `DEVELOP_DB_PASSWORD` |
 
 Jalankan **sekali** dengan `psql` pada database `miniapp_db` sebagai superuser (mis. `postgres`). Superuser dibutuhkan karena `CREATE ROLE` memerlukan hak superuser/`CREATEROLE`, dan `CREATE SCHEMA ... AUTHORIZATION` di PostgreSQL 16 mensyaratkan pelaksana dapat `SET ROLE` ke role tujuan.
 
@@ -322,15 +352,116 @@ Catatan:
 - `pg_hba.conf` harus mengizinkan role `afl3_production` dan `afl3_develop` dari IP node deploy. Aturan yang hanya menyebut user tertentu akan menolak role baru.
 - User admin (`cred_db.md`) hanya dipakai untuk administrasi, tidak dipakai oleh aplikasi.
 
-### Persiapan sebelum deploy pertama
+### Persiapan node (sekali)
 
-- `APP_IMAGE` di `.env.production` dan `.env.develop` menunjuk ke `ghcr.io/satryo-1076012614901/afl3-miniapp` dengan tag `:production` dan `:develop`.
-- Package GHCR bersifat private secara default. Login di node dengan Personal Access Token ber-scope `read:packages`: `docker login ghcr.io -u satryo-1076012614901`.
-- Pastikan network `traefik` sudah ada di node.
-- Buat role dan schema database (lihat *Role database per environment*).
-- Sesuaikan `APP_MEM_LIMIT` di kedua file env dengan RAM node. Total batas production + develop (default 2 × `768m`) ditambah kebutuhan Traefik dan layanan lain tidak boleh melebihi RAM node.
+1. **User deploy** khusus, anggota grup `docker` (setara akses root di node). Shell user ini harus shell yang valid (mis. `/bin/bash`), bukan `nologin`, karena *forced command* dijalankan melalui shell user:
+   ```bash
+   sudo useradd --create-home --shell /bin/bash deploy
+   sudo usermod -aG docker deploy
+   sudo install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+   ```
+2. **SSH key khusus deploy.** Buat di laptop (PowerShell) dan biarkan passphrase kosong, karena key dipakai oleh GitHub Actions:
+   ```powershell
+   ssh-keygen -t ed25519 -f $HOME\.ssh\afl3-deploy -C "afl3-miniapp deploy"
+   ```
+   Pasang public key di node dengan pembatasan *forced command*, sehingga key ini hanya dapat mengakses Docker API dan tidak bisa membuka shell:
+   ```bash
+   # isi <PUBLIC-KEY> dengan isi file afl3-deploy.pub (satu baris "ssh-ed25519 AAAA... afl3-miniapp deploy")
+   echo 'restrict,command="docker system dial-stdio" <PUBLIC-KEY>' | sudo tee /home/deploy/.ssh/authorized_keys
+   sudo chown deploy:deploy /home/deploy/.ssh/authorized_keys
+   sudo chmod 600 /home/deploy/.ssh/authorized_keys
+   ```
+3. **Hardening SSH.** Port SSH node harus dapat diakses runner GitHub, yang IP-nya berubah-ubah; jika node berada di belakang NAT, diperlukan port-forward.
+   - Buat `/etc/ssh/sshd_config.d/00-hardening.conf` berisi `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, dan `PermitRootLogin no`.
+   - Prefix `00-` dipakai karena sshd memakai nilai **pertama** yang ditemukan, sehingga file ini mengalahkan file seperti `50-cloud-init.conf`.
+   - Sebelum reload, pastikan akun admin sudah bisa login dengan SSH key, dan biarkan satu sesi SSH tetap terbuka.
+   - Validasi dengan `sudo sshd -t`, lalu jalankan `sudo systemctl reload ssh`.
+4. **Host key untuk verifikasi.** Di laptop (PowerShell), jalankan `ssh-keyscan -p <port> <host> | Out-File -Encoding ascii $HOME\afl3-known-hosts.txt`. Redirect `>` di PowerShell 5.1 menghasilkan file UTF-16 yang tidak dapat dibaca OpenSSH.
+   - Cocokkan fingerprint (`ssh-keygen -lf $HOME\afl3-known-hosts.txt`) dengan fingerprint di node (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`).
+   - `<host>` harus sama persis dengan nilai variable `NODE_SSH_HOST` (IP atau nama DNS), karena known_hosts dicocokkan berdasarkan string host dan port.
+   - Isi file yang sudah diverifikasi disimpan sebagai secret `NODE_SSH_KNOWN_HOSTS`.
+5. **Koneksi dari laptop.** Tambahkan entri berikut di `~/.ssh/config` laptop (`C:\Users\<user>\.ssh\config`), lalu uji dengan `$env:DOCKER_HOST = "ssh://afl3-node"; docker version`:
+   ```
+   Host afl3-node
+     HostName <host-atau-IP-node>
+     User deploy
+     Port <port>
+     IdentityFile ~/.ssh/afl3-deploy
+     IdentitiesOnly yes
+   ```
+6. Pastikan network `traefik` sudah ada di node, dan role serta schema database sudah dibuat (lihat *Role database per environment*).
 
-Container tidak mem-publish port ke host; seluruh akses melalui Traefik. Traefik hanya meneruskan trafik ke container yang berstatus `healthy`.
+## CI/CD (GitHub Actions)
+
+| Workflow | Pemicu | Isi |
+|---|---|---|
+| `.github/workflows/ci.yml` | Pull Request ke `main` / `deploy` | `./gradlew build` (kompilasi + test) dengan service PostgreSQL 16 |
+| `.github/workflows/deploy.yml` | Push ke `main` / `deploy`, atau manual (*Run workflow*) | Test → build dan push image → `docker compose up -d --wait` di node melalui SSH → smoke test `/system/status` melalui URL publik |
+
+Seluruh job berjalan di runner GitHub (`ubuntu-latest`); tidak ada runner yang dipasang di node.
+
+| Branch | Environment | Image yang di-deploy | Tag tambahan |
+|---|---|---|---|
+| `main` | `/develop` | `ghcr.io/satryo-1076012614901/afl3-miniapp:sha-<commit>` | `:develop` |
+| `deploy` | `/production` | `ghcr.io/satryo-1076012614901/afl3-miniapp:sha-<commit>` | `:production` |
+
+Job deploy memakai tag `:sha-<commit>`, sehingga image yang dijalankan selalu tepat hasil build commit tersebut. Tag `:develop` / `:production` dipakai untuk deploy manual dari laptop.
+
+### Secrets dan variables
+
+Atur di *Settings → Secrets and variables → Actions* pada repository:
+
+| Nama | Jenis | Isi |
+|---|---|---|
+| `NODE_SSH_PRIVATE_KEY` | Secret | Isi file private key `afl3-deploy` (termasuk baris `BEGIN`/`END`) |
+| `NODE_SSH_KNOWN_HOSTS` | Secret | Output `ssh-keyscan` yang sudah diverifikasi |
+| `PRODUCTION_DB_PASSWORD` | Secret | `DB_PASSWORD` dari `.env.production` |
+| `DEVELOP_DB_PASSWORD` | Secret | `DB_PASSWORD` dari `.env.develop` |
+| `NODE_SSH_HOST` | Variable | Host atau IP SSH node |
+| `NODE_SSH_USER` | Variable | `deploy` |
+| `NODE_SSH_PORT` | Variable (opsional) | Port SSH, default `22` |
+| `APP_MEM_LIMIT` | Variable (opsional) | Batas memori container, default `768m` |
+
+Nilai lain ditetapkan di `deploy.yml`: host API, URL database, username `afl3_<environment>`, dan schema `<environment>`.
+
+`APP_MEM_LIMIT` berlaku untuk kedua environment. Total batas production + develop (default 2 × `768m`) ditambah kebutuhan Traefik dan layanan lain tidak boleh melebihi RAM node.
+
+Keamanan pada paket GitHub Free (repository private):
+
+- Repository secrets dapat dipakai oleh workflow dari branch mana pun. Collaborator dengan akses tulis dapat membuat workflow di branch-nya sendiri yang membocorkan SSH key atau password database.
+- *Forced command* pada `authorized_keys` membatasi key ke Docker API saja, tetapi akses Docker API tetap setara root di node.
+- Karena itu, perubahan pada folder `.github/workflows/` wajib di-review dengan teliti. Jika ada anggota yang keluar dari tim, ganti SSH key dan password database.
+- Dengan GitHub Pro/Team, secret dapat dipindahkan ke *Environments* (`develop`, `production`) yang dibatasi ke branch `main` / `deploy`.
+
+### Deploy manual dari laptop
+
+Dipakai untuk deploy pertama (sebelum workflow berjalan) atau bila workflow tidak tersedia. File env tetap berada di laptop.
+
+1. Buat Personal Access Token (classic) dengan scope `write:packages` (*Settings → Developer settings → Personal access tokens → Tokens (classic)*). GHCR hanya menerima token classic.
+2. Build dan push image:
+   ```powershell
+   docker login ghcr.io -u satryo-1076012614901      # password: token classic
+   docker build -t ghcr.io/satryo-1076012614901/afl3-miniapp:develop .
+   docker push ghcr.io/satryo-1076012614901/afl3-miniapp:develop
+   ```
+3. Jalankan di node melalui SSH:
+   ```powershell
+   $env:DOCKER_HOST = "ssh://afl3-node"
+   docker compose -p afl3-develop --env-file .env.develop -f compose.server.yml up -d --wait
+   Remove-Item Env:DOCKER_HOST
+   curl.exe -s https://api.vispro.satryo.pro/develop/system/status
+   ```
+   Hasil yang benar: `status` = `UP`, `environment` = `develop`, `database.schema` = `develop`.
+4. Untuk production: `docker tag ghcr.io/satryo-1076012614901/afl3-miniapp:develop ghcr.io/satryo-1076012614901/afl3-miniapp:production`, lalu `docker push ghcr.io/satryo-1076012614901/afl3-miniapp:production`. Setelah itu jalankan compose dengan `afl3-production` dan `.env.production`.
+5. Setelah push pertama, buka pengaturan package (*Profile → Packages → afl3-miniapp → Package settings → Manage Actions access*). Pastikan repository `afl3-miniapp` terdaftar dengan role **Write**, agar workflow dapat memperbarui package yang dibuat secara manual.
+
+### Rollback
+
+1. Buka tab *Actions → Deploy*, lalu pilih run terakhir yang berhasil untuk environment tersebut.
+2. Pilih *Re-run jobs* dan jalankan ulang job **Deploy**. Job ini men-deploy ulang image `:sha-<commit>` milik run tersebut tanpa build ulang.
+3. Revert commit bermasalah di branch terkait melalui Pull Request, agar deploy berikutnya tidak mengembalikan versi bermasalah.
+
+Rollback ini tidak mengubah tag `:develop` / `:production`. Deploy manual dari laptop tetap memakai image terbaru pada tag tersebut.
 
 ## Koneksi database dan transaksi
 
@@ -367,6 +498,4 @@ Langkah kerja lengkap untuk tim ada di [`README.md`](README.md). Ringkasnya:
 
 ## Belum tersedia
 
-- Workflow GitHub Actions (`.github/workflows/`).
-- Migration awal serta kode modul Competition, Participant, dan Match.
-- Implementasi error body `code`/`message` beserta pemetaan katalog kode error API.
+- Kode modul Participant dan Match beserta migration-nya.

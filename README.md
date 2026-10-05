@@ -12,6 +12,9 @@ Dokumen ini adalah panduan kerja tim: struktur folder, aturan penempatan kode, d
 afl3-miniapp/
 ├── README.md                 # Panduan kerja tim (dokumen ini)
 ├── HELP.md                   # Referensi teknis: env, Docker, deploy, database, Flyway
+├── .github/workflows/
+│   ├── ci.yml                # Build + test untuk setiap Pull Request ke main/deploy
+│   └── deploy.yml            # Deploy otomatis: main -> /develop, deploy -> /production
 ├── Dockerfile                # Build image aplikasi (multi-stage, JDK 25 -> JRE 25)
 ├── .dockerignore             # Whitelist file yang dikirim ke Docker saat build
 ├── compose.local.yml         # PostgreSQL 16 + aplikasi untuk development lokal
@@ -50,8 +53,9 @@ File yang sudah ada sebagai contoh dan acuan:
 | `repository/DatabaseProbeRepository.kt` | Contoh repository berbasis `JdbcTemplate` |
 | `domain/DatabaseProbe.kt` | Contoh model domain |
 | `dto/SystemStatusResponse.kt` | Contoh DTO response |
-| `exception/GlobalExceptionHandler.kt` | Contoh handler bersama; implementasi awal masih `ProblemDetail` dan perlu disesuaikan ke kontrak `code`/`message` sebelum endpoint bisnis dibuat |
-| `exception/ResourceNotFoundException.kt` | Exception untuk data tidak ditemukan (HTTP 404) |
+| `exception/ApiError.kt` | Body error `ApiErrorResponse`, enum `ApiErrorCode` (katalog kode error), dan `ApiException` untuk pelanggaran aturan bisnis |
+| `exception/ResourceNotFoundException.kt` | Turunan `ApiException` untuk data tidak ditemukan (HTTP 404, kode `<RESOURCE>_NOT_FOUND`) |
+| `exception/GlobalExceptionHandler.kt` | Mengubah seluruh exception menjadi body error standar `{"code","message"}` |
 
 ---
 
@@ -74,7 +78,7 @@ repository/   query ke database
       ▼
 PostgreSQL    schema sesuai environment (public / develop / production)
 
-exception/GlobalExceptionHandler  <-- menangkap exception dari layer mana pun; targetnya error body standar
+exception/GlobalExceptionHandler  <-- menangkap exception dari layer mana pun, mengembalikan {"code","message"}
 ```
 
 ### 2.2 Tanggung jawab dan aturan tiap layer
@@ -94,7 +98,7 @@ Aturan tambahan:
 1. **Transaksi ditentukan di service.** Beri `@Transactional(readOnly = true)` di level class service sebagai penanda operasi baca, lalu `@Transactional` pada method yang menulis data. Keduanya memakai datasource PostgreSQL yang sama.
 2. **Operasi atomik berada di transaksi yang sama.** Perubahan yang menyentuh beberapa tabel (mis. membuat bracket dan mengubah status kompetisi) wajib diproses dalam satu method `@Transactional` agar seluruh perubahan commit atau rollback bersama.
 3. **Entity tidak keluar dari service.** Controller selalu menerima dan mengembalikan DTO.
-4. **Error dilempar sebagai exception**, misalnya `throw ResourceNotFoundException("Competition", id)`. Jangan membuat response error manual di controller.
+4. **Error dilempar sebagai exception.** Pakai `ResourceNotFoundException("Competition", id)` untuk data tidak ditemukan, dan `ApiException(HttpStatus.CONFLICT, ApiErrorCode.COMPETITION_NOT_OPEN, "...")` untuk pelanggaran aturan bisnis. Jangan membuat response error manual di controller.
 5. **Error API mengikuti satu kontrak.** Seluruh response error memakai body `{"code":"<KODE>","message":"<pesan>"}`. Daftar kode error ada di [`HELP.md`](HELP.md#kontrak-api-aplikasi).
 6. **Schema database hanya diubah melalui migration Flyway.** Hibernate berjalan dengan `ddl-auto: validate`, sehingga aplikasi gagal start jika entity tidak sesuai dengan tabel.
 
@@ -113,11 +117,11 @@ Aturan tambahan:
 
 ### 2.4 Pembagian modul
 
-| Modul | Branch | File yang dibuat |
-|---|---|---|
-| Competition | `feature/competition` | `domain/Competition.kt`, `repository/CompetitionRepository.kt`, `service/CompetitionService.kt`, `controller/CompetitionController.kt`, `dto/CompetitionDto.kt`, migration `competition` |
-| Participant | `feature/participant` | `domain/Participant.kt`, `repository/ParticipantRepository.kt`, `service/ParticipantService.kt`, `controller/ParticipantController.kt`, `dto/ParticipantDto.kt`, migration `participant` |
-| Match | `feature/match` | `domain/Match.kt`, `repository/MatchRepository.kt`, `service/MatchService.kt`, `controller/MatchController.kt`, `dto/MatchDto.kt`, migration `match` |
+| Modul | Penanggung jawab | Branch | File yang dibuat |
+|---|---|---|---|
+| Competition | Satryo | `feature/competition` | `domain/Competition.kt`, `domain/ParticipantType.kt`, `domain/CompetitionStatus.kt`, `repository/CompetitionRepository.kt`, `service/CompetitionService.kt`, `controller/CompetitionController.kt`, `dto/CompetitionDto.kt`, migration `V1__create_competition.sql` |
+| Participant | Jessy | `feature/participant` | `domain/Participant.kt`, `repository/ParticipantRepository.kt`, `service/ParticipantService.kt`, `controller/ParticipantController.kt`, `dto/ParticipantDto.kt`, migration `participant` |
+| Match | Fariz | `feature/match` | `domain/Match.kt`, `repository/MatchRepository.kt`, `service/MatchService.kt`, `controller/MatchController.kt`, `dto/MatchDto.kt`, migration `match` |
 
 **File bersama** — `application.yaml`, `build.gradle.kts`, `config/`, `exception/GlobalExceptionHandler.kt`, `Dockerfile`, dan file `compose*.yml` — dipakai semua modul. Perubahan pada file bersama wajib didiskusikan dulu dengan tim dan diajukan sebagai Pull Request kecil tersendiri agar tidak menimbulkan konflik.
 
@@ -125,7 +129,7 @@ Jika tabel suatu modul memiliki foreign key ke tabel modul lain (mis. `participa
 
 ### 2.5 Contoh satu modul
 
-Contoh berikut adalah **ilustrasi** penempatan kode untuk modul Competition, bukan kontrak API lengkap. Field, validasi, status, serta response final wajib mengikuti [kontrak API di `HELP.md`](HELP.md#kontrak-api-aplikasi).
+Contoh berikut adalah **ilustrasi ringkas** penempatan kode, bukan kontrak API lengkap. Implementasi nyata modul Competition (termasuk `participantType`, `status`, dan aturan bisnisnya) dapat dilihat langsung di file-file yang tercantum pada tabel 2.4, beserta test-nya di `src/test/kotlin/ac/sfj/afl3/controller/CompetitionControllerTests.kt`. Field, validasi, status, serta response final wajib mengikuti [kontrak API di `HELP.md`](HELP.md#kontrak-api-aplikasi).
 
 **`src/main/resources/db/migration/V1__create_competition.sql`**
 
@@ -431,6 +435,7 @@ Buka GitHub, buat Pull Request dari `feature/competition` ke `main`, lalu salin 
 
 ## Checklist
 - [ ] Branch sudah di-rebase ke `main` terbaru dan tidak ada konflik
+- [ ] Workflow CI pada PR ini berhasil (tanda centang hijau)
 - [ ] `gradlew bootJar` berhasil
 - [ ] `docker compose -f compose.local.yml up -d --build` berhasil dan container app `healthy`
 - [ ] `GET /system/status` mengembalikan `UP`
@@ -444,7 +449,7 @@ Buka GitHub, buat Pull Request dari `feature/competition` ke `main`, lalu salin 
 ### Langkah 7 — Review oleh anggota lain
 
 - PR wajib mendapat **minimal 1 approval dari anggota lain**. Penulis PR tidak me-merge PR-nya sendiri tanpa approval.
-- Reviewer memeriksa kesesuaian dengan aturan layer (bagian 2), batas transaksi, migration, dan checklist. Bila perlu, reviewer menjalankan branch tersebut di lokal:
+- Reviewer memastikan workflow **CI** pada PR berhasil, lalu memeriksa kesesuaian dengan aturan layer (bagian 2), batas transaksi, migration, dan checklist. Perubahan pada `.github/workflows/` harus di-review dengan sangat teliti karena workflow deploy memegang akses SSH ke server dan password database. Bila perlu, reviewer menjalankan branch tersebut di lokal:
   ```powershell
   git fetch origin
   git switch feature/competition
@@ -466,7 +471,7 @@ Buka GitHub, buat Pull Request dari `feature/competition` ke `main`, lalu salin 
 2. Setelah mendapat approval, PR di-merge; `deploy` di-deploy ke production.
 3. Verifikasi `https://api.vispro.satryo.pro/production/system/status` dan endpoint yang dirilis.
 
-> Deploy otomatis pada Langkah 8 dan 9 berlaku setelah workflow GitHub Actions tersedia. Sebelum itu, deploy dilakukan manual oleh pemilik repository sesuai bagian *Deploy ke server* di [`HELP.md`](HELP.md).
+> Deploy pada Langkah 8 dan 9 berjalan otomatis melalui workflow **Deploy** (tab *Actions* di GitHub): test → build image → deploy di server → smoke test `/system/status`. Jika job **Test** atau **Build** gagal, tidak ada yang di-deploy dan versi sebelumnya tetap berjalan. Jika job **Deploy** gagal, container lama sudah diganti oleh container baru yang tidak sehat, sehingga environment tersebut perlu segera diperbaiki atau di-rollback. Detail di bagian *CI/CD* pada [`HELP.md`](HELP.md).
 
 ### Ringkasan alur
 
