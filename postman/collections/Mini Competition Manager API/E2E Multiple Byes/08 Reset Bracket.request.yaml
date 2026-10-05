@@ -1,12 +1,11 @@
 $kind: http-request
-url: '{{host}}/api/competitions/{{competitionId}}'
+url: '{{host}}/api/competitions/{{competitionId}}/matches'
 method: DELETE
 scripts:
   - type: afterResponse
     code: |-
-      pm.test('test competition is deleted', function () {
+      pm.test('bye bracket is reset', function () {
         pm.response.to.have.status(204);
       });
-      pm.collectionVariables.unset('competitionId');
     language: text/javascript
 order: 8000
