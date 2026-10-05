@@ -187,6 +187,27 @@ class MatchServiceIntegrationTests {
     }
 
     @Test
+    fun `generates bracket with persisted bye winners`() {
+        val competition = createCompetition("Byes")
+        val competitionId = requireNotNull(competition.id)
+        val participants = (1..5).map { index ->
+            participantRepository.save(Participant(competitionId, "Bye participant $index"))
+        }
+
+        val result = matchService.generate(competitionId)
+        val firstRound = result.filter { it.round == 1 }
+        val secondRound = result.filter { it.round == 2 }
+
+        assertEquals(7, result.size)
+        assertEquals(3, firstRound.count { it.status == MatchStatus.COMPLETED })
+        assertEquals(requireNotNull(participants[0].id), firstRound[0].winnerId)
+        assertEquals(requireNotNull(participants[0].id), secondRound[0].participant1Id)
+        assertEquals(requireNotNull(participants[1].id), secondRound[0].participant2Id)
+        assertEquals(MatchStatus.READY, secondRound[0].status)
+        assertEquals(MatchStatus.PENDING, secondRound[1].status)
+    }
+
+    @Test
     fun `rejects generate when participant count is invalid`() {
         val competition = createCompetition("Invalid count")
 

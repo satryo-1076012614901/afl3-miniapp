@@ -11,8 +11,8 @@ class BracketPlannerTests {
     private val planner = BracketPlanner()
 
     @Test
-    fun `creates complete bracket for every MVP participant count`() {
-        for (participantCount in BracketPlanner.SUPPORTED_PARTICIPANT_COUNTS) {
+    fun `creates complete bracket for power of two participant counts`() {
+        for (participantCount in listOf(2, 4, 8, 16)) {
             val participants = (1L..participantCount.toLong()).toList()
 
             val result = planner.create(participants)
@@ -21,8 +21,30 @@ class BracketPlannerTests {
             assertEquals(participantCount / 2, result.count { it.round == 1 })
             assertEquals(1, result.count { it.nextMatch == null })
             assertEquals(MatchStatus.READY, result.first().status)
-            assertEquals(MatchStatus.PENDING, result.last().status)
+            assertEquals(
+                if (participantCount == 2) MatchStatus.READY else MatchStatus.PENDING,
+                result.last().status,
+            )
         }
+    }
+
+    @Test
+    fun `assigns byes to earliest seeds and advances them automatically`() {
+        val result = planner.create(listOf(10, 20, 30, 40, 50))
+        val firstRound = result.filter { it.round == 1 }
+        val secondRound = result.filter { it.round == 2 }
+
+        assertEquals(7, result.size)
+        assertEquals(listOf(10L, 20L, 30L), firstRound.take(3).map { it.winnerId })
+        assertEquals(List(3) { MatchStatus.COMPLETED }, firstRound.take(3).map { it.status })
+        assertNull(firstRound[0].participant2Id)
+        assertEquals(40, firstRound[3].participant1Id)
+        assertEquals(50, firstRound[3].participant2Id)
+        assertEquals(MatchStatus.READY, secondRound[0].status)
+        assertEquals(10, secondRound[0].participant1Id)
+        assertEquals(20, secondRound[0].participant2Id)
+        assertEquals(MatchStatus.PENDING, secondRound[1].status)
+        assertEquals(30, secondRound[1].participant1Id)
     }
 
     @Test
@@ -72,7 +94,7 @@ class BracketPlannerTests {
 
     @Test
     fun `rejects participant counts outside MVP`() {
-        for (participantCount in listOf(0, 2, 3, 5, 6, 7, 9, 32)) {
+        for (participantCount in listOf(0, 1, 17, 32)) {
             assertFailsWith<IllegalArgumentException> {
                 planner.create((1L..participantCount.toLong()).toList())
             }
