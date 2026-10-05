@@ -40,11 +40,11 @@ class MatchService(
         val participantIds = participantRepository
             .findAllByCompetitionIdOrderByCreatedAtAscIdAsc(competitionId)
             .map { requireNotNull(it.id) }
-        if (participantIds.size !in BracketPlanner.SUPPORTED_PARTICIPANT_COUNTS) {
+        if (participantIds.size !in BracketPlanner.MIN_PARTICIPANTS..BracketPlanner.MAX_PARTICIPANTS) {
             throw ApiException(
                 HttpStatus.CONFLICT,
                 ApiErrorCode.INVALID_PARTICIPANT_COUNT,
-                "Participant count must be 4, 8, or 16",
+                "Participant count must be between 2 and 16",
             )
         }
 
@@ -55,6 +55,7 @@ class MatchService(
                     competitionId = competitionId,
                     participant1Id = it.participant1Id,
                     participant2Id = it.participant2Id,
+                    winnerId = it.winnerId,
                     round = it.round,
                     matchNumber = it.matchNumber,
                     status = it.status,
@@ -147,7 +148,8 @@ class MatchService(
     fun undoResult(competitionId: Long, matchId: Long): MatchResponse {
         val competition = lockCompetition(competitionId)
         val match = requireMatch(competitionId, matchId)
-        if (match.status != MatchStatus.COMPLETED) {
+        val isAutomaticBye = listOf(match.participant1Id, match.participant2Id).count { it != null } == 1
+        if (match.status != MatchStatus.COMPLETED || isAutomaticBye) {
             throw matchUndoNotAllowed()
         }
 
