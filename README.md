@@ -6,6 +6,18 @@ Dokumen ini adalah panduan kerja tim: struktur folder, aturan penempatan kode, d
 
 ---
 
+## UI Simulation
+
+Spring Boot menyajikan API playground di `/`. Jalankan backend dan PostgreSQL seperti biasa, lalu buka `http://localhost:8080/` (sesuaikan port). Untuk deployment dengan prefix, gunakan `/develop/` atau `/production/` dengan trailing slash.
+
+UI memakai API asli dan menyimpan perubahan ke database. Wizard **01 Kompetisi → 02 Peserta → 03 Bracket** menyediakan CRUD kompetisi/peserta, hasil pertandingan dengan skor opsional, undo, reset, dan log request/response dengan timestamp WIB. Pemilihan kompetisi tidak memanggil API tambahan; data peserta dan pertandingan dimuat saat langkahnya dibuka. Form berada di atas daftar dan kembali fokus ke nama setelah submit.
+
+Tampilan normal menggunakan card pertandingan per ronde. **View Bracket Mode** membuka diagram fullscreen untuk TV dengan auto-refresh 5 detik; tekan Esc untuk kembali. Tombol ini disembunyikan pada layar kecil. Node BYE menampilkan satu peserta, dan diagram mengikuti hubungan `nextMatchId` agar cabang tidak bertumpuk.
+
+File UI berada di `src/main/resources/static/` dan ikut dikemas ke JAR/Docker image, tanpa dependency frontend. Untuk menjalankan perubahan lewat IDE, perbarui resource dengan `bash gradlew processResources`, lalu refresh browser; perubahan konfigurasi memerlukan restart. JAR/Docker perlu dibangun ulang. Asset CSS/JS memakai query versi acak per halaman, dan resource statis mengirim `Cache-Control: no-store`. Cache Rules CDN yang mengabaikan query/header origin tetap memerlukan penyesuaian atau purge.
+
+---
+
 ## 1. Struktur folder
 
 ```plain
