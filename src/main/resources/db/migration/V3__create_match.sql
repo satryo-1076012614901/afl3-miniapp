@@ -22,7 +22,5 @@ CREATE TABLE match (
     CONSTRAINT match_status_check CHECK (status IN ('PENDING', 'READY', 'COMPLETED'))
 );
 
--- Dipakai oleh MatchService.findAll()
--- melalui MatchRepository.findAllByCompetitionIdOrderByRoundAscMatchNumberAsc().
 CREATE INDEX match_competition_order_idx
-    ON match (competition_id, round, match_number);
+    ON match (competition_id, round, match_number); -- MatchService.findAll() --> MatchRepository.findAllByCompetitionIdOrderByRoundAscMatchNumberAsc()
