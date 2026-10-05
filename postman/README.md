@@ -25,7 +25,7 @@ The collection includes these independent scenarios:
 
 - `E2E Individual`: complete four-player lifecycle.
 - `E2E Team`: complete four-team lifecycle including team members.
-- `E2E Multiple Byes`: verifies a five-participant bracket with three automatic byes.
+- `E2E Multiple Byes`: verifies a five-participant bracket with two non-consecutive byes.
 - `E2E Sad Paths`: invalid winner and premature-final errors.
 
 Start the backend and run one self-cleaning scenario with Postman CLI:
