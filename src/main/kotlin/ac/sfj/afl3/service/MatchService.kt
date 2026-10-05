@@ -26,6 +26,8 @@ class MatchService(
 ) {
     @Transactional
     fun generate(competitionId: Long): List<MatchResponse> {
+        // Competition menjadi concurrency boundary. Request generate yang datang bersamaan
+        // akan diproses bergantian, sehingga hanya request pertama yang melihat status OPEN.
         val competition = lockCompetition(competitionId)
         if (competition.status != CompetitionStatus.OPEN) {
             throw ApiException(
@@ -59,6 +61,9 @@ class MatchService(
                 )
             },
         )
+
+        // ID database baru tersedia setelah flush. Peta posisi menghubungkan rencana topology
+        // dengan entity yang sudah memiliki ID tanpa bergantung pada query tambahan.
         val matchesByPosition = matches.associateBy { it.round to it.matchNumber }
         plan.zip(matches).forEach { (planned, match) ->
             val next = planned.nextMatch ?: return@forEach
@@ -115,14 +120,20 @@ class MatchService(
 
         val nextMatchId = match.nextMatchId
         if (nextMatchId == null) {
+            // Match tanpa nextMatch adalah final; winner final menjadi champion secara derivasi.
             competition.status = CompetitionStatus.COMPLETED
         } else {
             val nextMatch = requireMatch(competitionId, nextMatchId)
+
+            // Mapping slot harus sama dengan BracketPlanner: source ganjil ke slot 1,
+            // source genap ke slot 2. Slot tidak boleh dipilih berdasarkan urutan submit.
             if (match.matchNumber % 2 == 1) {
                 nextMatch.participant1Id = request.winnerId
             } else {
                 nextMatch.participant2Id = request.winnerId
             }
+
+            // Match downstream baru boleh dimainkan setelah kedua semifinalis tersedia.
             if (nextMatch.participant1Id != null && nextMatch.participant2Id != null) {
                 nextMatch.status = MatchStatus.READY
             }
@@ -142,12 +153,19 @@ class MatchService(
 
         val nextMatchId = match.nextMatchId
         if (nextMatchId == null) {
+            // Undo final membuka kembali turnamen, tetapi tetap mempertahankan bracket.
             competition.status = CompetitionStatus.IN_MATCH
         } else {
             val nextMatch = requireMatch(competitionId, nextMatchId)
+
+            // Hasil source tidak boleh diubah setelah downstream selesai karena akan
+            // menghasilkan jalur pemenang yang tidak konsisten.
             if (nextMatch.status == MatchStatus.COMPLETED) {
                 throw matchUndoNotAllowed()
             }
+
+            // Bersihkan slot yang sama dengan slot progression, lalu tahan downstream
+            // di PENDING sampai kedua sumbernya kembali mempunyai pemenang.
             if (match.matchNumber % 2 == 1) {
                 nextMatch.participant1Id = null
             } else {
@@ -175,6 +193,8 @@ class MatchService(
             )
         }
 
+        // Status diubah sebelum bulk delete karena delete memakai clearAutomatically.
+        // Urutan ini memastikan perubahan Competition sudah di-flush sebelum entity detached.
         competition.status = CompetitionStatus.OPEN
         matchRepository.deleteAllByCompetitionId(competitionId)
     }
@@ -195,6 +215,10 @@ class MatchService(
             ResourceNotFoundException("Competition", competitionId)
         }
 
+    /**
+     * Semua mutasi Match mengunci row Competition yang sama. Dengan begitu perubahan pada
+     * beberapa row Match tetap terserialisasi per kompetisi dalam satu transaksi.
+     */
     private fun lockCompetition(competitionId: Long) =
         competitionRepository.findByIdForUpdate(competitionId)
             ?: throw ResourceNotFoundException("Competition", competitionId)

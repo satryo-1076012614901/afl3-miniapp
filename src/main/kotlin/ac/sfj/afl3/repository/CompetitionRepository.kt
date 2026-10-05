@@ -9,6 +9,10 @@ import org.springframework.data.repository.query.Param
 
 interface CompetitionRepository : JpaRepository<Competition, Long> {
 
+    /**
+     * Mengambil Competition dengan row-level write lock sampai transaksi selesai.
+     * Match memakai satu row ini sebagai mutex agar generate/result/undo/reset tidak balapan.
+     */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select competition from Competition competition where competition.id = :id")
     fun findByIdForUpdate(@Param("id") id: Long): Competition?
