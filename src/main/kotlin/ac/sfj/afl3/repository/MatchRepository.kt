@@ -17,6 +17,11 @@ interface MatchRepository : JpaRepository<Match, Long> {
         matchNumber: Int,
     ): Match?
 
+    fun findAllByCompetitionIdAndNextMatchIdOrderByMatchNumberAsc(
+        competitionId: Long,
+        nextMatchId: Long,
+    ): List<Match>
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("delete from Match match where match.competitionId = :competitionId")
     fun deleteAllByCompetitionId(@Param("competitionId") competitionId: Long): Int
