@@ -35,7 +35,7 @@ Aturan antar-layer:
 - `controller` hanya memanggil `service` dan mengembalikan `dto`; controller tidak mengakses `repository` secara langsung.
 - `service` menentukan batas transaksi (`@Transactional` / `@Transactional(readOnly = true)`); seluruh transaksi memakai datasource yang sama.
 - Entity JPA tidak dikembalikan langsung ke client; petakan ke `dto` di service.
-- Error dilempar sebagai exception dan diubah oleh `GlobalExceptionHandler` menjadi body standar `{"code":"<KODE>","message":"<pesan>"}` sesuai katalog error API. Handler awal masih memakai `ProblemDetail` dan harus disesuaikan sebelum endpoint bisnis diimplementasikan.
+- Error dilempar sebagai exception (`ApiException` atau turunannya, mis. `ResourceNotFoundException`) dan diubah oleh `GlobalExceptionHandler` menjadi body standar `{"code":"<KODE>","message":"<pesan>"}` sesuai katalog error API (lihat *Kontrak API aplikasi → Error body dan katalog kode*).
 
 Setiap modul menambahkan file pada layer yang sesuai, misalnya `controller/CompetitionController.kt`, `service/CompetitionService.kt`, `repository/CompetitionRepository.kt`, `domain/Competition.kt`, dan `dto/CompetitionDto.kt`.
 
@@ -236,6 +236,35 @@ Seluruh error API memakai media type JSON dengan bentuk:
 | `409` | `COMPETITION_NOT_OPEN`, `COMPETITION_NOT_IN_MATCH`, `PARTICIPANT_TYPE_LOCKED`, `DUPLICATE_PARTICIPANT_NAME`, `INVALID_PARTICIPANT_COUNT`, `MATCH_NOT_READY`, `MATCH_UNDO_NOT_ALLOWED` |
 
 Validasi path bersifat hierarkis: participant atau match harus menjadi milik `competitionId` pada URL. Jika tidak, response menggunakan kode not-found untuk resource tersebut dan tidak membocorkan resource dari kompetisi lain.
+
+#### Implementasi di kode
+
+Kontrak error diimplementasikan di package `exception/`:
+
+- `ApiError.kt` berisi `ApiErrorResponse` (body error), enum `ApiErrorCode` (seluruh kode error), dan `ApiException`.
+- `ResourceNotFoundException.kt` adalah turunan `ApiException` untuk data yang tidak ditemukan.
+- `GlobalExceptionHandler.kt` mengubah exception menjadi response.
+
+| Sumber error | HTTP | Kode |
+|---|---|---|
+| `ApiException(status, code, message)` yang dilempar service | Sesuai `status` | Sesuai `code` |
+| `ResourceNotFoundException("Competition" / "Participant" / "Match", id)` | `404` | `COMPETITION_NOT_FOUND` / `PARTICIPANT_NOT_FOUND` / `MATCH_NOT_FOUND` |
+| Error standar Spring MVC berstatus 400 (gagal validasi `@Valid`, JSON tidak valid, tipe parameter salah) | `400` | `VALIDATION_ERROR` |
+| Error standar Spring MVC lainnya (route tidak ada, method tidak didukung, dst.) | Status aslinya | `HTTP_ERROR` |
+| `DataIntegrityViolationException` (pelanggaran constraint database) | `409` | `DATA_INTEGRITY_VIOLATION` |
+| Exception lain yang tidak tertangani | `500` | `INTERNAL_SERVER_ERROR` |
+
+`DATA_INTEGRITY_VIOLATION`, `HTTP_ERROR`, dan `INTERNAL_SERVER_ERROR` adalah kode tambahan dari handler, di luar katalog kontrak API. Untuk error validasi, `message` saat ini generik (`Request tidak valid`) dan belum menyebutkan field yang salah.
+
+Contoh di service:
+
+```kotlin
+// Data tidak ditemukan -> 404 COMPETITION_NOT_FOUND
+throw ResourceNotFoundException("Competition", competitionId)
+
+// Pelanggaran aturan bisnis -> 409 COMPETITION_NOT_OPEN
+throw ApiException(HttpStatus.CONFLICT, ApiErrorCode.COMPETITION_NOT_OPEN, "Competition is not open")
+```
 
 ## Docker image
 
@@ -470,4 +499,3 @@ Langkah kerja lengkap untuk tim ada di [`README.md`](README.md). Ringkasnya:
 ## Belum tersedia
 
 - Migration awal serta kode modul Competition, Participant, dan Match.
-- Implementasi error body `code`/`message` beserta pemetaan katalog kode error API.
