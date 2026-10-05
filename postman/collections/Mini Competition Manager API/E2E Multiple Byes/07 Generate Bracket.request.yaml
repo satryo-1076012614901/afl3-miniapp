@@ -4,15 +4,30 @@ method: POST
 scripts:
   - type: afterResponse
     code: |-
-      pm.test('five participants produce three automatic byes', function () {
+      pm.test('five participants produce two non-consecutive byes', function () {
         pm.response.to.have.status(201);
         const matches = pm.response.json();
-        pm.expect(matches).to.have.lengthOf(7);
-        const byes = matches.filter(match => match.round === 1 && match.status === 'COMPLETED');
-        pm.expect(byes).to.have.lengthOf(3);
-        byes.forEach(match => pm.expect(match.winnerId).to.be.a('number'));
-        const readySecondRound = matches.filter(match => match.round === 2 && match.status === 'READY');
-        pm.expect(readySecondRound).to.have.lengthOf(1);
+        pm.expect(matches).to.have.lengthOf(6);
+
+        const incomingCounts = matches.reduce((counts, match) => {
+          if (match.nextMatchId !== null) {
+            counts[match.nextMatchId] = (counts[match.nextMatchId] || 0) + 1;
+          }
+          return counts;
+        }, {});
+        const byes = matches.filter(match => {
+          const occupiedSlots = [match.participant1Id, match.participant2Id]
+            .filter(participantId => participantId !== null).length;
+          return match.round === 1 ? occupiedSlots === 1 : incomingCounts[match.id] === 1;
+        });
+
+        pm.expect(byes).to.have.lengthOf(2);
+        const byeIds = new Set(byes.map(match => match.id));
+        byes.forEach(match => {
+          if (match.nextMatchId !== null) {
+            pm.expect(byeIds.has(match.nextMatchId)).to.eql(false);
+          }
+        });
       });
     language: text/javascript
 order: 7000
