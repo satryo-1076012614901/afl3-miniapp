@@ -1,0 +1,23 @@
+$kind: http-request
+url: '{{host}}/api/competitions/{{competitionId}}/matches/{{match2Id}}/result'
+method: POST
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "winnerId": {{participant3Id}},
+      "score1": 21,
+      "score2": 15
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('semifinal 2 is completed', function () {
+        pm.response.to.have.status(200);
+        pm.expect(pm.response.json().status).to.eql('COMPLETED');
+      });
+    language: text/javascript
+order: 9000

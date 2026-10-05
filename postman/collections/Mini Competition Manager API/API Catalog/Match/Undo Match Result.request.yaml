@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{host}}/api/competitions/{{competitionId}}/matches/{{matchId}}/undo"
+method: POST
+order: 7000

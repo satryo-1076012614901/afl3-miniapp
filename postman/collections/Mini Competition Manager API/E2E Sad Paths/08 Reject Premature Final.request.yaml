@@ -1,0 +1,19 @@
+$kind: http-request
+url: '{{host}}/api/competitions/{{competitionId}}/matches/{{finalMatchId}}/result'
+method: POST
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    { "winnerId": {{participant1Id}} }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('pending final cannot receive a result', function () {
+        pm.response.to.have.status(409);
+        pm.expect(pm.response.json().code).to.eql('MATCH_NOT_READY');
+      });
+    language: text/javascript
+order: 8000

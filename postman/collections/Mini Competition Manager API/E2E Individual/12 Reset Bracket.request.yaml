@@ -1,0 +1,12 @@
+$kind: http-request
+url: '{{host}}/api/competitions/{{competitionId}}/matches'
+method: DELETE
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('reset removes the bracket', function () {
+        pm.response.to.have.status(204);
+        pm.expect(pm.response.text()).to.eql('');
+      });
+    language: text/javascript
+order: 12000

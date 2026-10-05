@@ -1,0 +1,17 @@
+$kind: http-request
+url: "{{host}}/api/competitions/{{competitionId}}/matches"
+method: POST
+scripts:
+  - type: afterResponse
+    code: |-
+      if (pm.response.code === 201) {
+        const matches = pm.response.json();
+        const match1 = matches.find(match => match.round === 1 && match.matchNumber === 1);
+        const match2 = matches.find(match => match.round === 1 && match.matchNumber === 2);
+        const finalMatch = matches.find(match => match.nextMatchId === null);
+        if (match1) pm.collectionVariables.set('match1Id', match1.id);
+        if (match2) pm.collectionVariables.set('match2Id', match2.id);
+        if (finalMatch) pm.collectionVariables.set('finalMatchId', finalMatch.id);
+      }
+    language: text/javascript
+order: 1000
