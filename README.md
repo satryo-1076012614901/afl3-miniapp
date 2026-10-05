@@ -53,8 +53,9 @@ File yang sudah ada sebagai contoh dan acuan:
 | `repository/DatabaseProbeRepository.kt` | Contoh repository berbasis `JdbcTemplate` |
 | `domain/DatabaseProbe.kt` | Contoh model domain |
 | `dto/SystemStatusResponse.kt` | Contoh DTO response |
-| `exception/GlobalExceptionHandler.kt` | Contoh handler bersama; implementasi awal masih `ProblemDetail` dan perlu disesuaikan ke kontrak `code`/`message` sebelum endpoint bisnis dibuat |
-| `exception/ResourceNotFoundException.kt` | Exception untuk data tidak ditemukan (HTTP 404) |
+| `exception/ApiError.kt` | Body error `ApiErrorResponse`, enum `ApiErrorCode` (katalog kode error), dan `ApiException` untuk pelanggaran aturan bisnis |
+| `exception/ResourceNotFoundException.kt` | Turunan `ApiException` untuk data tidak ditemukan (HTTP 404, kode `<RESOURCE>_NOT_FOUND`) |
+| `exception/GlobalExceptionHandler.kt` | Mengubah seluruh exception menjadi body error standar `{"code","message"}` |
 
 ---
 
@@ -77,7 +78,7 @@ repository/   query ke database
       ▼
 PostgreSQL    schema sesuai environment (public / develop / production)
 
-exception/GlobalExceptionHandler  <-- menangkap exception dari layer mana pun; targetnya error body standar
+exception/GlobalExceptionHandler  <-- menangkap exception dari layer mana pun, mengembalikan {"code","message"}
 ```
 
 ### 2.2 Tanggung jawab dan aturan tiap layer
@@ -97,7 +98,7 @@ Aturan tambahan:
 1. **Transaksi ditentukan di service.** Beri `@Transactional(readOnly = true)` di level class service sebagai penanda operasi baca, lalu `@Transactional` pada method yang menulis data. Keduanya memakai datasource PostgreSQL yang sama.
 2. **Operasi atomik berada di transaksi yang sama.** Perubahan yang menyentuh beberapa tabel (mis. membuat bracket dan mengubah status kompetisi) wajib diproses dalam satu method `@Transactional` agar seluruh perubahan commit atau rollback bersama.
 3. **Entity tidak keluar dari service.** Controller selalu menerima dan mengembalikan DTO.
-4. **Error dilempar sebagai exception**, misalnya `throw ResourceNotFoundException("Competition", id)`. Jangan membuat response error manual di controller.
+4. **Error dilempar sebagai exception.** Pakai `ResourceNotFoundException("Competition", id)` untuk data tidak ditemukan, dan `ApiException(HttpStatus.CONFLICT, ApiErrorCode.COMPETITION_NOT_OPEN, "...")` untuk pelanggaran aturan bisnis. Jangan membuat response error manual di controller.
 5. **Error API mengikuti satu kontrak.** Seluruh response error memakai body `{"code":"<KODE>","message":"<pesan>"}`. Daftar kode error ada di [`HELP.md`](HELP.md#kontrak-api-aplikasi).
 6. **Schema database hanya diubah melalui migration Flyway.** Hibernate berjalan dengan `ddl-auto: validate`, sehingga aplikasi gagal start jika entity tidak sesuai dengan tabel.
 
