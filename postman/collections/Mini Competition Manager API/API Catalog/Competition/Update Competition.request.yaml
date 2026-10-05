@@ -1,0 +1,13 @@
+$kind: http-request
+url: "{{host}}/api/competitions/{{competitionId}}"
+method: PUT
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "Friday Tournament Updated",
+      "participantType": "INDIVIDUAL"
+    }
+order: 4000

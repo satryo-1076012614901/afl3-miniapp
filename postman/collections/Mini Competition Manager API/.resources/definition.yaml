@@ -1,0 +1,13 @@
+$kind: collection
+name: Mini Competition Manager API
+variables:
+  - key: host
+    value: 'http://localhost:8080'
+  - key: competitionId
+    value: ''
+  - key: participantId
+    value: ''
+  - key: matchId
+    value: ''
+  - key: winnerId
+    value: ''

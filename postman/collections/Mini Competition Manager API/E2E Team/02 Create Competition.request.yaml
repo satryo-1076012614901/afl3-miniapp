@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{host}}/api/competitions'
+method: POST
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "Postman E2E Tournament",
+      "participantType": "TEAM"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('competition is created OPEN', function () {
+        pm.response.to.have.status(201);
+        const response = pm.response.json();
+        pm.expect(response.id).to.be.a('number');
+        pm.expect(response.status).to.eql('OPEN');
+        pm.collectionVariables.set('competitionId', response.id);
+      });
+    language: text/javascript
+order: 3000

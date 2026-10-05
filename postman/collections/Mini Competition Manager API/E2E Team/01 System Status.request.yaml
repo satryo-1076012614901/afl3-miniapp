@@ -1,0 +1,14 @@
+$kind: http-request
+url: '{{host}}/system/status'
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('system and database are UP', function () {
+        pm.response.to.have.status(200);
+        const response = pm.response.json();
+        pm.expect(response.status).to.eql('UP');
+        pm.expect(response.database.status).to.eql('UP');
+      });
+    language: text/javascript
+order: 1000

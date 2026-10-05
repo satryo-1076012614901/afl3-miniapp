@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{host}}/api/competitions/{{competitionId}}/participants'
+method: POST
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "E2E Team 1",
+      "members": [{ "name": "Team 1 Member A" }, { "name": "Team 1 Member B" }]
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('participant 1 is created', function () {
+        pm.response.to.have.status(201);
+        const response = pm.response.json();
+        pm.expect(response.competitionId).to.eql(Number(pm.collectionVariables.get('competitionId')));
+        pm.expect(response.members).to.have.lengthOf(2);
+        pm.collectionVariables.set('participant1Id', response.id);
+      });
+    language: text/javascript
+order: 3000
