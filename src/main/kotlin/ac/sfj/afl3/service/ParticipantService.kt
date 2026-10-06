@@ -1,7 +1,7 @@
 package ac.sfj.afl3.service
 
-import ac.sfj.afl3.domain.Participant
-import ac.sfj.afl3.domain.ParticipantType
+import ac.sfj.afl3.model.Participant
+import ac.sfj.afl3.model.ParticipantType
 import ac.sfj.afl3.dto.ParticipantRequest
 import ac.sfj.afl3.dto.ParticipantResponse
 import ac.sfj.afl3.dto.toResponse

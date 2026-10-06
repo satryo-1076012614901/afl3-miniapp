@@ -1,6 +1,6 @@
 package ac.sfj.afl3.repository
 
-import ac.sfj.afl3.domain.Competition
+import ac.sfj.afl3.model.Competition
 import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock

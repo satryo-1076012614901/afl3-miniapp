@@ -1,7 +1,7 @@
 package ac.sfj.afl3.dto
 
-import ac.sfj.afl3.domain.Participant
-import ac.sfj.afl3.domain.TeamMember
+import ac.sfj.afl3.model.Participant
+import ac.sfj.afl3.model.TeamMember
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import java.time.Instant

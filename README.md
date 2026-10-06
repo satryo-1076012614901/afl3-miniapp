@@ -47,7 +47,7 @@ afl3-miniapp/
     │   │   ├── controller/          # REST endpoint
     │   │   ├── service/             # Business logic + batas transaksi
     │   │   ├── repository/          # Akses data (Spring Data JPA / JdbcTemplate)
-    │   │   ├── domain/              # Entity JPA dan model domain
+    │   │   ├── model/              # Entity JPA dan model domain
     │   │   ├── dto/                 # Objek request/response + mapper entity -> response
     │   │   └── exception/           # GlobalExceptionHandler dan exception aplikasi
     │   └── resources/
@@ -63,7 +63,7 @@ File yang sudah ada sebagai contoh dan acuan:
 | `controller/SystemController.kt` | Endpoint uji coba `GET /system/status` |
 | `service/SystemStatusService.kt` | Contoh service untuk memeriksa koneksi database |
 | `repository/DatabaseProbeRepository.kt` | Contoh repository berbasis `JdbcTemplate` |
-| `domain/DatabaseProbe.kt` | Contoh model domain |
+| `model/DatabaseProbe.kt` | Contoh model domain |
 | `dto/SystemStatusResponse.kt` | Contoh DTO response |
 | `exception/ApiError.kt` | Body error `ApiErrorResponse`, enum `ApiErrorCode` (katalog kode error), dan `ApiException` untuk pelanggaran aturan bisnis |
 | `exception/ResourceNotFoundException.kt` | Turunan `ApiException` untuk data tidak ditemukan (HTTP 404, kode `<RESOURCE>_NOT_FOUND`) |
@@ -98,10 +98,10 @@ exception/GlobalExceptionHandler  <-- menangkap exception dari layer mana pun, m
 | Layer | Folder | Isi | Boleh memanggil | Tidak boleh |
 |---|---|---|---|---|
 | Controller | `controller/` | Mapping URL, validasi input, kode status HTTP | `service/`, `dto/` | Mengakses `repository/`, menulis business logic, mengembalikan entity |
-| Service | `service/` | Business logic, batas transaksi, mapping entity <-> DTO | `repository/`, `domain/`, `dto/`, `exception/` | Mengetahui detail HTTP (`HttpServletRequest`, `ResponseEntity`) |
-| Repository | `repository/` | Query database | `domain/` | Business logic, DTO |
-| Domain | `domain/` | Entity JPA (`@Entity`) dan model domain | — | Bergantung pada layer lain |
-| DTO | `dto/` | Request/response dan fungsi mapper `Entity.toResponse()` | `domain/` | Logika selain mapping |
+| Service | `service/` | Business logic, batas transaksi, mapping entity <-> DTO | `repository/`, `model/`, `dto/`, `exception/` | Mengetahui detail HTTP (`HttpServletRequest`, `ResponseEntity`) |
+| Repository | `repository/` | Query database | `model/` | Business logic, DTO |
+| Model | `model/` | Entity JPA (`@Entity`) dan model domain | — | Bergantung pada layer lain |
+| DTO | `dto/` | Request/response dan fungsi mapper `Entity.toResponse()` | `model/` | Logika selain mapping |
 | Exception | `exception/` | Exception aplikasi dan `GlobalExceptionHandler` | — | — |
 | Config | `config/` | Bean konfigurasi Spring | — | Business logic |
 
@@ -118,7 +118,7 @@ Aturan tambahan:
 
 | Jenis | Pola | Contoh |
 |---|---|---|
-| Entity | `<Nama>` (tunggal) | `domain/Competition.kt` |
+| Entity | `<Nama>` (tunggal) | `model/Competition.kt` |
 | Repository | `<Nama>Repository` | `repository/CompetitionRepository.kt` |
 | Service | `<Nama>Service` | `service/CompetitionService.kt` |
 | Controller | `<Nama>Controller` | `controller/CompetitionController.kt` |
@@ -131,9 +131,9 @@ Aturan tambahan:
 
 | Modul | Penanggung jawab | Branch | File yang dibuat |
 |---|---|---|---|
-| Competition | Satryo | `feature/competition` | `domain/Competition.kt`, `domain/ParticipantType.kt`, `domain/CompetitionStatus.kt`, `repository/CompetitionRepository.kt`, `service/CompetitionService.kt`, `controller/CompetitionController.kt`, `dto/CompetitionDto.kt`, migration `V1__create_competition.sql` |
-| Participant | Jessy | `feature/participant` | `domain/Participant.kt`, `repository/ParticipantRepository.kt`, `service/ParticipantService.kt`, `controller/ParticipantController.kt`, `dto/ParticipantDto.kt`, migration `participant` |
-| Match | Fariz | `feature/match` | `domain/Match.kt`, `repository/MatchRepository.kt`, `service/MatchService.kt`, `controller/MatchController.kt`, `dto/MatchDto.kt`, migration `match` |
+| Competition | Satryo | `feature/competition` | `model/Competition.kt`, `model/ParticipantType.kt`, `model/CompetitionStatus.kt`, `repository/CompetitionRepository.kt`, `service/CompetitionService.kt`, `controller/CompetitionController.kt`, `dto/CompetitionDto.kt`, migration `V1__create_competition.sql` |
+| Participant | Jessy | `feature/participant` | `model/Participant.kt`, `repository/ParticipantRepository.kt`, `service/ParticipantService.kt`, `controller/ParticipantController.kt`, `dto/ParticipantDto.kt`, migration `participant` |
+| Match | Fariz | `feature/match` | `model/Match.kt`, `repository/MatchRepository.kt`, `service/MatchService.kt`, `controller/MatchController.kt`, `dto/MatchDto.kt`, migration `match` |
 
 **File bersama** — `application.yaml`, `build.gradle.kts`, `config/`, `exception/GlobalExceptionHandler.kt`, `Dockerfile`, dan file `compose*.yml` — dipakai semua modul. Perubahan pada file bersama wajib didiskusikan dulu dengan tim dan diajukan sebagai Pull Request kecil tersendiri agar tidak menimbulkan konflik.
 
@@ -155,10 +155,10 @@ CREATE TABLE competition (
 
 Tulis migration **tanpa** prefix schema (`competition`, bukan `production.competition`) agar migration yang sama berlaku untuk semua environment.
 
-**`domain/Competition.kt`**
+**`model/Competition.kt`**
 
 ```kotlin
-package ac.sfj.afl3.domain
+package ac.sfj.afl3.model
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -188,7 +188,7 @@ class Competition(
 ```kotlin
 package ac.sfj.afl3.repository
 
-import ac.sfj.afl3.domain.Competition
+import ac.sfj.afl3.model.Competition
 import org.springframework.data.jpa.repository.JpaRepository
 
 interface CompetitionRepository : JpaRepository<Competition, Long>
@@ -199,7 +199,7 @@ interface CompetitionRepository : JpaRepository<Competition, Long>
 ```kotlin
 package ac.sfj.afl3.dto
 
-import ac.sfj.afl3.domain.Competition
+import ac.sfj.afl3.model.Competition
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import java.time.Instant
@@ -228,7 +228,7 @@ fun Competition.toResponse() = CompetitionResponse(
 ```kotlin
 package ac.sfj.afl3.service
 
-import ac.sfj.afl3.domain.Competition
+import ac.sfj.afl3.model.Competition
 import ac.sfj.afl3.dto.CompetitionRequest
 import ac.sfj.afl3.dto.CompetitionResponse
 import ac.sfj.afl3.dto.toResponse
@@ -364,7 +364,7 @@ git switch -c feature/competition
 ### Langkah 2 — Tulis kode dengan urutan berikut
 
 1. **Migration** di `src/main/resources/db/migration/` (lihat konvensi nomor versi di Langkah 5).
-2. **Entity** di `domain/`, sesuai dengan tabel di migration.
+2. **Entity** di `model/`, sesuai dengan tabel di migration.
 3. **Repository** di `repository/`.
 4. **DTO** di `dto/`: request, response, dan mapper `toResponse()`.
 5. **Service** di `service/`: business logic dan anotasi transaksi.
@@ -453,7 +453,7 @@ Buka GitHub, buat Pull Request dari `feature/competition` ke `main`, lalu salin 
 - [ ] `GET /system/status` mengembalikan `UP`
 - [ ] Endpoint modul diuji untuk kasus berhasil dan gagal (400/404)
 - [ ] Migration baru memakai nomor versi yang belum terpakai; migration lama tidak diubah
-- [ ] Kode diletakkan sesuai layer (controller/service/repository/domain/dto/exception)
+- [ ] Kode diletakkan sesuai layer (controller/service/repository/model/dto/exception)
 - [ ] Tidak ada file rahasia (`.env*`, kredensial) yang ikut di-commit
 - [ ] Tidak ada perubahan file bersama tanpa kesepakatan tim
 ```

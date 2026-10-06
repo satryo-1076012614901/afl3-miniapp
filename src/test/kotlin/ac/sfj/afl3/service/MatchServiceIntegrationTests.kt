@@ -1,11 +1,11 @@
 package ac.sfj.afl3.service
 
-import ac.sfj.afl3.domain.Competition
-import ac.sfj.afl3.domain.CompetitionStatus
-import ac.sfj.afl3.domain.Match
-import ac.sfj.afl3.domain.MatchStatus
-import ac.sfj.afl3.domain.ParticipantType
-import ac.sfj.afl3.domain.Participant
+import ac.sfj.afl3.model.Competition
+import ac.sfj.afl3.model.CompetitionStatus
+import ac.sfj.afl3.model.Match
+import ac.sfj.afl3.model.MatchStatus
+import ac.sfj.afl3.model.ParticipantType
+import ac.sfj.afl3.model.Participant
 import ac.sfj.afl3.exception.ApiErrorCode
 import ac.sfj.afl3.exception.ResourceNotFoundException
 import ac.sfj.afl3.exception.ApiException

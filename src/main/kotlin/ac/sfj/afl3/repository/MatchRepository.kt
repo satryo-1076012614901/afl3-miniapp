@@ -1,6 +1,6 @@
 package ac.sfj.afl3.repository
 
-import ac.sfj.afl3.domain.Match
+import ac.sfj.afl3.model.Match
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query

@@ -1,4 +1,4 @@
-package ac.sfj.afl3.domain
+package ac.sfj.afl3.model
 
 enum class MatchStatus {
     PENDING,
