@@ -10,6 +10,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.PreUpdate
 import jakarta.persistence.Table
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 @Entity
 @Table(name = "competition")
@@ -30,13 +31,21 @@ class Competition(
     var status: CompetitionStatus = CompetitionStatus.OPEN
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    var createdAt: Instant = Instant.now()
+    var createdAt: Instant = now()
 
     @Column(name = "updated_at", nullable = false)
-    var updatedAt: Instant = Instant.now()
+    var updatedAt: Instant = createdAt
 
     @PreUpdate
     fun updateTimestamp() {
-        updatedAt = Instant.now()
+        updatedAt = now()
+    }
+
+    private companion object {
+        /**
+         * PostgreSQL `timestamptz` hanya menyimpan presisi mikrodetik. Waktu dipotong ke mikrodetik
+         * agar nilai pada response create/update sama persis dengan nilai yang tersimpan dan dibaca ulang.
+         */
+        fun now(): Instant = Instant.now().truncatedTo(ChronoUnit.MICROS)
     }
 }

@@ -12,6 +12,7 @@ import ac.sfj.afl3.repository.CompetitionRepository
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 
 @Service
@@ -37,7 +38,7 @@ class CompetitionService(private val competitionRepository: CompetitionRepositor
      */
     @Transactional
     fun update(competitionId: Long, request: CompetitionRequest): CompetitionResponse {
-        val competition = getCompetition(competitionId)
+        val competition = getCompetitionForUpdate(competitionId)
         ensureOpen(competition)
 
         if (request.participantType != competition.participantType &&
@@ -59,17 +60,35 @@ class CompetitionService(private val competitionRepository: CompetitionRepositor
     /** Menghapus kompetisi saat `OPEN`; peserta ikut terhapus melalui `ON DELETE CASCADE`. */
     @Transactional
     fun delete(competitionId: Long) {
-        val competition = getCompetition(competitionId)
+        val competition = getCompetitionForUpdate(competitionId)
         ensureOpen(competition)
         competitionRepository.delete(competition)
     }
 
     /**
      * Mengambil kompetisi atau melempar 404 `COMPETITION_NOT_FOUND`.
-     * Dapat dipakai service modul lain (Participant, Match) untuk validasi `competitionId` pada path.
+     * Dipakai untuk operasi baca dan validasi `competitionId` pada path. Operasi yang mengubah
+     * kompetisi atau isinya memakai [getCompetitionForUpdate].
      */
     fun getCompetition(competitionId: Long): Competition =
         competitionRepository.findByIdOrNull(competitionId)
+            ?: throw ResourceNotFoundException("Competition", competitionId)
+
+    /**
+     * Mengambil kompetisi dengan row lock (`SELECT ... FOR UPDATE`) atau melempar 404 `COMPETITION_NOT_FOUND`.
+     *
+     * Dipakai oleh setiap operasi yang mengubah kompetisi atau isinya: update/delete kompetisi serta
+     * create/update/delete peserta. Modul Match mengunci row yang sama untuk generate, submit, undo,
+     * dan reset, sehingga seluruh operasi tersebut berjalan bergantian per kompetisi dan pemeriksaan
+     * status (mis. [ensureOpen]) selalu membaca status terbaru. Tanpa lock, peserta yang ditambahkan
+     * bersamaan dengan generate dapat masuk ke kompetisi `IN_MATCH` tanpa tercantum di bracket.
+     *
+     * Wajib dipanggil di dalam transaksi tulis milik pemanggil (`@Transactional` tanpa `readOnly`).
+     * Lock dilepas saat transaksi pemanggil selesai.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    fun getCompetitionForUpdate(competitionId: Long): Competition =
+        competitionRepository.findByIdForUpdate(competitionId)
             ?: throw ResourceNotFoundException("Competition", competitionId)
 
     /**
