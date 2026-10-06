@@ -1,20 +1,22 @@
 # AFL3 — Mini Competition Manager (Backend)
 
+## Ide
+
+**Mini Competition Manager** membantu panitia mengelola turnamen *single-elimination* dari pendaftaran peserta, pembentukan bracket, pencatatan hasil, hingga penentuan juara. Aplikasi ini dibuat untuk menggantikan pengelolaan bracket manual yang rawan salah dan sulit dipantau.
+
+## Pembagian tugas
+
+| Anggota | Tanggung jawab utama | Tanggung jawab tambahan |
+|---|---|---|
+| Satryo Nugroho | Competition Service | Project scaffold dan kesiapan environment |
+| Jessy Rosinta | Participant Service | Testing dan dokumentasi |
+| Fariz | Match Service | System design |
+
+## Teknis
+
 Backend REST API untuk aplikasi Android **Mini Competition Manager** (turnamen *single-elimination*), tugas AFL3 Visual Programming. Satu backend terdiri atas tiga modul — **Competition**, **Participant**, dan **Match** — dan setiap modul dikerjakan oleh satu anggota tim.
 
 Dokumen ini adalah panduan kerja tim: struktur folder, aturan penempatan kode, dan langkah dari mulai menulis kode, uji coba, hingga merge. Referensi teknis yang lebih rinci (environment variable, Docker image, deploy, koneksi database, dan Flyway) ada di [`HELP.md`](HELP.md).
-
----
-
-## UI Simulation
-
-Spring Boot menyajikan API playground di `/`. Jalankan backend dan PostgreSQL seperti biasa, lalu buka `http://localhost:8080/` (sesuaikan port). Untuk deployment dengan prefix, gunakan `/develop/` atau `/production/` dengan trailing slash.
-
-UI memakai API asli dan menyimpan perubahan ke database. Wizard **01 Kompetisi → 02 Peserta → 03 Bracket** menyediakan CRUD kompetisi/peserta, hasil pertandingan dengan skor opsional, undo, reset, dan log request/response dengan timestamp WIB. Pemilihan kompetisi tidak memanggil API tambahan; data peserta dan pertandingan dimuat saat langkahnya dibuka. Form berada di atas daftar dan kembali fokus ke nama setelah submit.
-
-Tampilan normal menggunakan card pertandingan per ronde. **View Bracket Mode** membuka diagram fullscreen untuk TV dengan auto-refresh 5 detik; tekan Esc untuk kembali. Tombol ini disembunyikan pada layar kecil. Node BYE menampilkan satu peserta, dan diagram mengikuti hubungan `nextMatchId` agar cabang tidak bertumpuk.
-
-File UI berada di `src/main/resources/static/` dan ikut dikemas ke JAR/Docker image, tanpa dependency frontend. Untuk menjalankan perubahan lewat IDE, perbarui resource dengan `bash gradlew processResources`, lalu refresh browser; perubahan konfigurasi memerlukan restart. JAR/Docker perlu dibangun ulang. Asset CSS/JS memakai query versi acak per halaman, dan resource statis mengirim `Cache-Control: no-store`. Cache Rules CDN yang mengabaikan query/header origin tetap memerlukan penyesuaian atau purge.
 
 ---
 
@@ -127,21 +129,13 @@ Aturan tambahan:
 | Migration | `V<versi>__<aksi>_<objek>.sql` | `V1__create_competition.sql` |
 | URL | diawali `/api`, kata benda jamak, kebab-case | `/api/competitions`, `/api/competitions/{competitionId}` |
 
-### 2.4 Pembagian modul
-
-| Modul | Penanggung jawab | Branch | File yang dibuat |
-|---|---|---|---|
-| Competition | Satryo | `feature/competition` | `model/Competition.kt`, `model/ParticipantType.kt`, `model/CompetitionStatus.kt`, `repository/CompetitionRepository.kt`, `service/CompetitionService.kt`, `controller/CompetitionController.kt`, `dto/CompetitionDto.kt`, migration `V1__create_competition.sql` |
-| Participant | Jessy | `feature/participant` | `model/Participant.kt`, `repository/ParticipantRepository.kt`, `service/ParticipantService.kt`, `controller/ParticipantController.kt`, `dto/ParticipantDto.kt`, migration `participant` |
-| Match | Fariz | `feature/match` | `model/Match.kt`, `repository/MatchRepository.kt`, `service/MatchService.kt`, `controller/MatchController.kt`, `dto/MatchDto.kt`, migration `match` |
-
 **File bersama** — `application.yaml`, `build.gradle.kts`, `config/`, `exception/GlobalExceptionHandler.kt`, `Dockerfile`, dan file `compose*.yml` — dipakai semua modul. Perubahan pada file bersama wajib didiskusikan dulu dengan tim dan diajukan sebagai Pull Request kecil tersendiri agar tidak menimbulkan konflik.
 
 Jika tabel suatu modul memiliki foreign key ke tabel modul lain (mis. `participant` ke `competition`), migration modul yang direferensikan harus di-merge lebih dulu.
 
-### 2.5 Contoh satu modul
+### 2.4 Contoh satu modul
 
-Contoh berikut adalah **ilustrasi ringkas** penempatan kode, bukan kontrak API lengkap. Implementasi nyata modul Competition (termasuk `participantType`, `status`, dan aturan bisnisnya) dapat dilihat langsung di file-file yang tercantum pada tabel 2.4, beserta test-nya di `src/test/kotlin/ac/sfj/afl3/controller/CompetitionControllerTests.kt`. Field, validasi, status, serta response final wajib mengikuti [kontrak API di `HELP.md`](HELP.md#kontrak-api-aplikasi).
+Contoh berikut adalah **ilustrasi ringkas** penempatan kode, bukan kontrak API lengkap. Implementasi nyata modul Competition (termasuk `participantType`, `status`, dan aturan bisnisnya) dapat dilihat di package terkait, beserta test-nya di `src/test/kotlin/ac/sfj/afl3/controller/CompetitionControllerTests.kt`. Field, validasi, status, serta response final wajib mengikuti [kontrak API di `HELP.md`](HELP.md#kontrak-api-aplikasi).
 
 **`src/main/resources/db/migration/V1__create_competition.sql`**
 
@@ -408,6 +402,12 @@ Commit secara bertahap dengan pesan yang jelas, misalnya `competition: tambah en
    ```powershell
    .\gradlew.bat test
    ```
+
+#### API playground (opsional)
+
+Untuk demo dan pengujian manual, Spring Boot menyediakan API playground di `/`. Setelah backend dan PostgreSQL berjalan, buka `http://localhost:8080/` (sesuaikan port). Playground memakai API serta database yang sama dengan client lain dan menyediakan alur Competition, Participant, dan Match, termasuk tampilan bracket.
+
+Playground bukan fitur utama atau pengganti aplikasi Android. Implementasinya berada di `src/main/resources/static/` tanpa dependency frontend dan ikut dikemas ke JAR/Docker image. Setelah mengubah resource statis saat menjalankan aplikasi lewat IDE, jalankan `bash gradlew processResources` lalu refresh browser; build ulang diperlukan untuk JAR atau Docker image.
 
 ### Langkah 4 — Perbarui branch dengan `main` terbaru
 
