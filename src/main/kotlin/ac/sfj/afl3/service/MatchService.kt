@@ -1,5 +1,6 @@
 package ac.sfj.afl3.service
 
+import ac.sfj.afl3.domain.Competition
 import ac.sfj.afl3.domain.CompetitionStatus
 import ac.sfj.afl3.domain.Match
 import ac.sfj.afl3.domain.MatchStatus
@@ -40,11 +41,11 @@ class MatchService(
         val participantIds = participantRepository
             .findAllByCompetitionIdOrderByCreatedAtAscIdAsc(competitionId)
             .map { requireNotNull(it.id) }
-        if (participantIds.size !in BracketPlanner.SUPPORTED_PARTICIPANT_COUNTS) {
+        if (participantIds.size !in BracketPlanner.MIN_PARTICIPANTS..BracketPlanner.MAX_PARTICIPANTS) {
             throw ApiException(
                 HttpStatus.CONFLICT,
                 ApiErrorCode.INVALID_PARTICIPANT_COUNT,
-                "Participant count must be 4, 8, or 16",
+                "Participant count must be between 2 and 16",
             )
         }
 
@@ -55,6 +56,7 @@ class MatchService(
                     competitionId = competitionId,
                     participant1Id = it.participant1Id,
                     participant2Id = it.participant2Id,
+                    winnerId = it.winnerId,
                     round = it.round,
                     matchNumber = it.matchNumber,
                     status = it.status,
@@ -118,26 +120,7 @@ class MatchService(
         match.score2 = request.score2
         match.status = MatchStatus.COMPLETED
 
-        val nextMatchId = match.nextMatchId
-        if (nextMatchId == null) {
-            // Match tanpa nextMatch adalah final; winner final menjadi champion secara derivasi.
-            competition.status = CompetitionStatus.COMPLETED
-        } else {
-            val nextMatch = requireMatch(competitionId, nextMatchId)
-
-            // Mapping slot harus sama dengan BracketPlanner: source ganjil ke slot 1,
-            // source genap ke slot 2. Slot tidak boleh dipilih berdasarkan urutan submit.
-            if (match.matchNumber % 2 == 1) {
-                nextMatch.participant1Id = request.winnerId
-            } else {
-                nextMatch.participant2Id = request.winnerId
-            }
-
-            // Match downstream baru boleh dimainkan setelah kedua semifinalis tersedia.
-            if (nextMatch.participant1Id != null && nextMatch.participant2Id != null) {
-                nextMatch.status = MatchStatus.READY
-            }
-        }
+        advanceWinner(competition, match, request.winnerId)
 
         matchRepository.flush()
         return match.toResponse()
@@ -147,31 +130,16 @@ class MatchService(
     fun undoResult(competitionId: Long, matchId: Long): MatchResponse {
         val competition = lockCompetition(competitionId)
         val match = requireMatch(competitionId, matchId)
-        if (match.status != MatchStatus.COMPLETED) {
+        val isAutomaticBye = listOf(match.participant1Id, match.participant2Id).count { it != null } == 1
+        if (match.status != MatchStatus.COMPLETED || isAutomaticBye) {
             throw matchUndoNotAllowed()
         }
 
-        val nextMatchId = match.nextMatchId
-        if (nextMatchId == null) {
+        if (match.nextMatchId == null) {
             // Undo final membuka kembali turnamen, tetapi tetap mempertahankan bracket.
             competition.status = CompetitionStatus.IN_MATCH
         } else {
-            val nextMatch = requireMatch(competitionId, nextMatchId)
-
-            // Hasil source tidak boleh diubah setelah downstream selesai karena akan
-            // menghasilkan jalur pemenang yang tidak konsisten.
-            if (nextMatch.status == MatchStatus.COMPLETED) {
-                throw matchUndoNotAllowed()
-            }
-
-            // Bersihkan slot yang sama dengan slot progression, lalu tahan downstream
-            // di PENDING sampai kedua sumbernya kembali mempunyai pemenang.
-            if (match.matchNumber % 2 == 1) {
-                nextMatch.participant1Id = null
-            } else {
-                nextMatch.participant2Id = null
-            }
-            nextMatch.status = MatchStatus.PENDING
+            clearProgression(competitionId, match)
         }
 
         match.winnerId = null
@@ -226,6 +194,77 @@ class MatchService(
     private fun requireMatch(competitionId: Long, matchId: Long) =
         matchRepository.findByIdAndCompetitionId(matchId, competitionId)
             ?: throw ResourceNotFoundException("Match", matchId)
+
+    /**
+     * Memajukan winner berdasarkan urutan source yang benar-benar menunjuk target. Cara ini tetap
+     * valid untuk ronde ganjil, ketika match 1 dan 3 dapat menuju target yang sama. Target dengan
+     * satu source adalah bye tertunda: begitu source selesai, bye ikut selesai dan winner diteruskan.
+     */
+    private fun advanceWinner(competition: Competition, source: Match, winnerId: Long) {
+        val nextMatchId = source.nextMatchId
+        if (nextMatchId == null) {
+            competition.status = CompetitionStatus.COMPLETED
+            return
+        }
+
+        val target = requireMatch(source.competitionId, nextMatchId)
+        val sources = progressionSources(source.competitionId, nextMatchId)
+        setProgressionSlot(target, sources.indexOfSource(source), winnerId)
+
+        if (sources.size == 1) {
+            target.winnerId = winnerId
+            target.status = MatchStatus.COMPLETED
+            advanceWinner(competition, target, winnerId)
+        } else if (target.participant1Id != null && target.participant2Id != null) {
+            target.status = MatchStatus.READY
+        }
+    }
+
+    /**
+     * Undo melewati node bye otomatis. Node tersebut bukan pertandingan yang dimainkan, sehingga
+     * boleh dibersihkan selama pertandingan sesudahnya belum selesai.
+     */
+    private fun clearProgression(competitionId: Long, source: Match) {
+        val target = requireMatch(competitionId, requireNotNull(source.nextMatchId))
+        val sources = progressionSources(competitionId, requireNotNull(target.id))
+
+        if (sources.size == 1) {
+            target.nextMatchId?.let { downstreamId ->
+                val downstream = requireMatch(competitionId, downstreamId)
+                if (downstream.status == MatchStatus.COMPLETED) throw matchUndoNotAllowed()
+                val byeSources = progressionSources(competitionId, downstreamId)
+                setProgressionSlot(downstream, byeSources.indexOfSource(target), null)
+                downstream.status = MatchStatus.PENDING
+            }
+            setProgressionSlot(target, sources.indexOfSource(source), null)
+            target.winnerId = null
+            target.status = MatchStatus.PENDING
+        } else {
+            if (target.status == MatchStatus.COMPLETED) throw matchUndoNotAllowed()
+            setProgressionSlot(target, sources.indexOfSource(source), null)
+            target.status = MatchStatus.PENDING
+        }
+    }
+
+    private fun progressionSources(competitionId: Long, nextMatchId: Long): List<Match> =
+        matchRepository.findAllByCompetitionIdAndNextMatchIdOrderByMatchNumberAsc(
+            competitionId,
+            nextMatchId,
+        )
+
+    private fun List<Match>.indexOfSource(source: Match): Int {
+        val index = indexOfFirst { it.id == source.id }
+        check(index in 0..1) { "Match source is not linked to its target" }
+        return index
+    }
+
+    private fun setProgressionSlot(target: Match, slotIndex: Int, participantId: Long?) {
+        if (slotIndex == 0) {
+            target.participant1Id = participantId
+        } else {
+            target.participant2Id = participantId
+        }
+    }
 
     private fun matchUndoNotAllowed() = ApiException(
         HttpStatus.CONFLICT,

@@ -187,6 +187,45 @@ class MatchServiceIntegrationTests {
     }
 
     @Test
+    fun `generates and progresses five participant bracket with only two byes`() {
+        val competition = createCompetition("Byes")
+        val competitionId = requireNotNull(competition.id)
+        val participants = (1..5).map { index ->
+            participantRepository.save(Participant(competitionId, "Bye participant $index"))
+        }
+
+        val result = matchService.generate(competitionId)
+        val firstRound = result.filter { it.round == 1 }
+        val secondRound = result.filter { it.round == 2 }
+
+        assertEquals(6, result.size)
+        assertEquals(1, firstRound.count { it.status == MatchStatus.COMPLETED })
+        assertEquals(requireNotNull(participants[4].id), firstRound[2].winnerId)
+        assertEquals(requireNotNull(participants[4].id), secondRound[0].participant2Id)
+        assertEquals(MatchStatus.PENDING, secondRound[0].status)
+        assertEquals(MatchStatus.PENDING, secondRound[1].status)
+
+        matchService.submitResult(
+            competitionId,
+            firstRound[0].id,
+            SubmitMatchResultRequest(requireNotNull(participants[0].id)),
+        )
+        matchService.submitResult(
+            competitionId,
+            firstRound[1].id,
+            SubmitMatchResultRequest(requireNotNull(participants[2].id)),
+        )
+
+        val progressed = matchService.findAll(competitionId)
+        val progressedSecondRound = progressed.filter { it.round == 2 }
+        val final = progressed.single { it.round == 3 }
+        assertEquals(MatchStatus.READY, progressedSecondRound[0].status)
+        assertEquals(MatchStatus.COMPLETED, progressedSecondRound[1].status)
+        assertEquals(requireNotNull(participants[2].id), progressedSecondRound[1].winnerId)
+        assertEquals(requireNotNull(participants[2].id), final.participant2Id)
+    }
+
+    @Test
     fun `rejects generate when participant count is invalid`() {
         val competition = createCompetition("Invalid count")
 
