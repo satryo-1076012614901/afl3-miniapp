@@ -14,7 +14,7 @@
 
 ## Jalankan aplikasi
 
-Prasyarat: Git dan Docker Compose.
+Running with Docker:
 
 ```sh
 git clone https://github.com/satryo-1076012614901/afl3-miniapp.git
@@ -22,11 +22,17 @@ cd afl3-miniapp
 docker compose -f compose.local.yml up -d --build
 ```
 
-Compose menjalankan backend dan PostgreSQL dengan konfigurasi lokal bawaan tanpa `.env`. Flyway menerapkan migration secara otomatis.
+Running with local DB (no Docker):
 
-Akses: `http://localhost:8080/`. Status backend: `http://localhost:8080/system/status`.
-
-Konfigurasi port dan cara menjalankan melalui IDE/Gradle tersedia di [HELP.md](HELP.md).
+```sh
+git clone https://github.com/satryo-1076012614901/afl3-miniapp.git
+cd afl3-miniapp
+createdb -h localhost -U postgres miniapp_db
+export DB_URL=jdbc:postgresql://localhost:5432/miniapp_db
+export DB_USERNAME=postgres
+export DB_PASSWORD='your-postgres-password'
+bash gradlew bootRun
+```
 
 ## Teknis
 
