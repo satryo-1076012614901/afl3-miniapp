@@ -14,7 +14,7 @@
 
 ## Jalankan aplikasi
 
-Install dan jalankan **Docker Desktop**, lalu:
+Prasyarat: Git dan Docker Compose.
 
 ```sh
 git clone https://github.com/satryo-1076012614901/afl3-miniapp.git
@@ -22,19 +22,11 @@ cd afl3-miniapp
 docker compose -f compose.local.yml up -d --build
 ```
 
-Tidak perlu membuat `.env`, menginstall Java, atau menyiapkan PostgreSQL sendiri. Compose menjalankan database dan backend; Flyway otomatis membuat tabel. Build pertama membutuhkan koneksi internet dan beberapa menit.
+Compose menjalankan backend dan PostgreSQL dengan konfigurasi lokal bawaan tanpa `.env`. Flyway menerapkan migration secara otomatis.
 
-Buka `http://localhost:8080/` untuk mencoba aplikasi melalui API playground. Cek kesiapan backend di `http://localhost:8080/system/status` (status `UP`). Jika belum siap, lihat `docker compose -f compose.local.yml logs -f app`.
+Akses: `http://localhost:8080/`. Status backend: `http://localhost:8080/system/status`.
 
-Jika port PostgreSQL `5432` sudah digunakan, buat file `.env` berisi `POSTGRES_PORT=5433`, lalu jalankan ulang perintah Compose. Jika port aplikasi `8080` digunakan, tambahkan `APP_PORT=8081` dan buka aplikasi pada port tersebut.
-
-Untuk menghentikan aplikasi tanpa menghapus data:
-
-```sh
-docker compose -f compose.local.yml down
-```
-
-File `.env` hanya diperlukan untuk konfigurasi khusus atau menjalankan backend melalui IDE/Gradle; lihat [HELP.md](HELP.md).
+Konfigurasi port dan cara menjalankan melalui IDE/Gradle tersedia di [HELP.md](HELP.md).
 
 ## Teknis
 
