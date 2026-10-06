@@ -27,10 +27,11 @@ Running with local DB (no Docker):
 ```sh
 git clone https://github.com/satryo-1076012614901/afl3-miniapp.git
 cd afl3-miniapp
-createdb -h localhost -U postgres miniapp_db
+createuser -h localhost -U postgres --pwprompt miniapp
+createdb -h localhost -U postgres --owner=miniapp miniapp_db
 export DB_URL=jdbc:postgresql://localhost:5432/miniapp_db
-export DB_USERNAME=postgres
-export DB_PASSWORD='your-postgres-password'
+export DB_USERNAME=miniapp
+export DB_PASSWORD='password-set-for-miniapp'
 bash gradlew bootRun
 ```
 
