@@ -12,6 +12,30 @@
 | Jessy Rosinta | Participant Service | Testing dan dokumentasi |
 | Fariz | Match Service | System design |
 
+## Jalankan aplikasi
+
+Install dan jalankan **Docker Desktop**, lalu:
+
+```sh
+git clone https://github.com/satryo-1076012614901/afl3-miniapp.git
+cd afl3-miniapp
+docker compose -f compose.local.yml up -d --build
+```
+
+Tidak perlu membuat `.env`, menginstall Java, atau menyiapkan PostgreSQL sendiri. Compose menjalankan database dan backend; Flyway otomatis membuat tabel. Build pertama membutuhkan koneksi internet dan beberapa menit.
+
+Buka `http://localhost:8080/` untuk mencoba aplikasi melalui API playground. Cek kesiapan backend di `http://localhost:8080/system/status` (status `UP`). Jika belum siap, lihat `docker compose -f compose.local.yml logs -f app`.
+
+Jika port PostgreSQL `5432` sudah digunakan, buat file `.env` berisi `POSTGRES_PORT=5433`, lalu jalankan ulang perintah Compose. Jika port aplikasi `8080` digunakan, tambahkan `APP_PORT=8081` dan buka aplikasi pada port tersebut.
+
+Untuk menghentikan aplikasi tanpa menghapus data:
+
+```sh
+docker compose -f compose.local.yml down
+```
+
+File `.env` hanya diperlukan untuk konfigurasi khusus atau menjalankan backend melalui IDE/Gradle; lihat [HELP.md](HELP.md).
+
 ## Teknis
 
 Backend REST API untuk aplikasi Android **Mini Competition Manager** (turnamen *single-elimination*), tugas AFL3 Visual Programming. Satu backend terdiri atas tiga modul — **Competition**, **Participant**, dan **Match** — dan setiap modul dikerjakan oleh satu anggota tim.
@@ -320,7 +344,7 @@ class CompetitionController(private val competitionService: CompetitionService) 
    git clone https://github.com/satryo-1076012614901/afl3-miniapp.git
    cd afl3-miniapp
    ```
-3. Buat file `.env` dari template (file `.env` tidak di-commit):
+3. Opsional untuk Compose; jika menjalankan backend dari IDE/Gradle, buat file `.env` dari template (file `.env` tidak di-commit):
    ```powershell
    Copy-Item .env.example .env
    ```
