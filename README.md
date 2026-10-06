@@ -1,5 +1,19 @@
 # AFL3 — Mini Competition Manager (Backend)
 
+## Ide
+
+**Mini Competition Manager** membantu panitia mengelola turnamen *single-elimination* dari pendaftaran peserta, pembentukan bracket, pencatatan hasil, hingga penentuan juara. Aplikasi ini dibuat untuk menggantikan pengelolaan bracket manual yang rawan salah dan sulit dipantau.
+
+## Pembagian tugas
+
+| Anggota | Tanggung jawab utama | Tanggung jawab tambahan |
+|---|---|---|
+| Satryo Nugroho | Competition Service | Project scaffold dan kesiapan environment |
+| Jessy Rosinta | Participant Service | Testing dan dokumentasi |
+| Fariz | Match Service | System design |
+
+## Teknis
+
 Backend REST API untuk aplikasi Android **Mini Competition Manager** (turnamen *single-elimination*), tugas AFL3 Visual Programming. Satu backend terdiri atas tiga modul — **Competition**, **Participant**, dan **Match** — dan setiap modul dikerjakan oleh satu anggota tim.
 
 Dokumen ini adalah panduan kerja tim: struktur folder, aturan penempatan kode, dan langkah dari mulai menulis kode, uji coba, hingga merge. Referensi teknis yang lebih rinci (environment variable, Docker image, deploy, koneksi database, dan Flyway) ada di [`HELP.md`](HELP.md).
@@ -115,25 +129,13 @@ Aturan tambahan:
 | Migration | `V<versi>__<aksi>_<objek>.sql` | `V1__create_competition.sql` |
 | URL | diawali `/api`, kata benda jamak, kebab-case | `/api/competitions`, `/api/competitions/{competitionId}` |
 
-### 2.4 Pembagian modul
-
-Setiap anggota bertanggung jawab atas satu modul utama dari entity dan migration sampai controller serta test modulnya. Tanggung jawab tambahan bersifat lintas modul dan dikerjakan bersama pemilik modul terkait ketika menyentuh kode mereka.
-
-| Anggota | Tanggung jawab utama | Cakupan utama | Tanggung jawab tambahan |
-|---|---|---|---|
-| Satryo Nugroho | **Competition Service** | Model, repository, service, controller, DTO, migration, dan test Competition | **Project scaffold:** kesiapan environment, konfigurasi awal aplikasi, build, dan kebutuhan dasar agar project dapat dijalankan |
-| Jessy Rosinta | **Participant Service** | Model, repository, service, controller, DTO, migration, dan test Participant | **Testing & dokumentasi:** membantu menjaga cakupan pengujian dan dokumentasi project tetap sesuai implementasi |
-| Fariz | **Match Service** | Model, repository, service, controller, DTO, migration, bracket planner, dan test Match | **System design:** rancangan arsitektur, kontrak antarmodul, alur bracket, serta konsistensi aturan bisnis sistem |
-
-Pembagian tersebut menunjukkan ownership dan koordinator utama, bukan batas kolaborasi. Perubahan lintas modul tetap dibahas dan di-review oleh pemilik modul yang terdampak.
-
 **File bersama** — `application.yaml`, `build.gradle.kts`, `config/`, `exception/GlobalExceptionHandler.kt`, `Dockerfile`, dan file `compose*.yml` — dipakai semua modul. Perubahan pada file bersama wajib didiskusikan dulu dengan tim dan diajukan sebagai Pull Request kecil tersendiri agar tidak menimbulkan konflik.
 
 Jika tabel suatu modul memiliki foreign key ke tabel modul lain (mis. `participant` ke `competition`), migration modul yang direferensikan harus di-merge lebih dulu.
 
-### 2.5 Contoh satu modul
+### 2.4 Contoh satu modul
 
-Contoh berikut adalah **ilustrasi ringkas** penempatan kode, bukan kontrak API lengkap. Implementasi nyata modul Competition (termasuk `participantType`, `status`, dan aturan bisnisnya) dapat dilihat langsung di file-file yang tercantum pada tabel 2.4, beserta test-nya di `src/test/kotlin/ac/sfj/afl3/controller/CompetitionControllerTests.kt`. Field, validasi, status, serta response final wajib mengikuti [kontrak API di `HELP.md`](HELP.md#kontrak-api-aplikasi).
+Contoh berikut adalah **ilustrasi ringkas** penempatan kode, bukan kontrak API lengkap. Implementasi nyata modul Competition (termasuk `participantType`, `status`, dan aturan bisnisnya) dapat dilihat di package terkait, beserta test-nya di `src/test/kotlin/ac/sfj/afl3/controller/CompetitionControllerTests.kt`. Field, validasi, status, serta response final wajib mengikuti [kontrak API di `HELP.md`](HELP.md#kontrak-api-aplikasi).
 
 **`src/main/resources/db/migration/V1__create_competition.sql`**
 
