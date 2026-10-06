@@ -3,6 +3,9 @@ package ac.sfj.afl3.controller
 import ac.sfj.afl3.domain.CompetitionStatus
 import ac.sfj.afl3.repository.CompetitionRepository
 import com.jayway.jsonpath.JsonPath
+import jakarta.persistence.EntityManager
+import jakarta.persistence.PersistenceContext
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -31,6 +34,9 @@ class CompetitionControllerTests {
 
     @Autowired
     private lateinit var competitionRepository: CompetitionRepository
+
+    @PersistenceContext
+    private lateinit var entityManager: EntityManager
 
     private lateinit var mockMvc: MockMvc
 
@@ -123,6 +129,70 @@ class CompetitionControllerTests {
     }
 
     @Test
+    fun `update changes participantType while competition has no participants`() {
+        val id = createCompetition("Friday Tournament")
+
+        mockMvc.put("/api/competitions/{competitionId}", id) {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"name": "Friday Tournament", "participantType": "TEAM"}"""
+        }.andExpect {
+            status { isOk() }
+            jsonPath("\$.participantType") { value("TEAM") }
+        }
+    }
+
+    @Test
+    fun `update participantType after participant registered returns 409 PARTICIPANT_TYPE_LOCKED`() {
+        val id = createCompetition("Friday Tournament")
+        mockMvc.post("/api/competitions/{competitionId}/participants", id) {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"name": "Alpha"}"""
+        }.andExpect {
+            status { isCreated() }
+        }
+
+        mockMvc.put("/api/competitions/{competitionId}", id) {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"name": "Friday Tournament", "participantType": "TEAM"}"""
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("\$.code") { value("PARTICIPANT_TYPE_LOCKED") }
+        }
+    }
+
+    @Test
+    fun `create and update responses carry the persisted timestamps`() {
+        val created = mockMvc.post("/api/competitions") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"name": "Friday Tournament", "participantType": "INDIVIDUAL"}"""
+        }.andExpect {
+            status { isCreated() }
+        }.andReturn().response.contentAsString
+        val id = JsonPath.read<Number>(created, "\$.id").toLong()
+        val createdAt = JsonPath.read<String>(created, "\$.createdAt")
+        assertEquals(createdAt, JsonPath.read<String>(created, "\$.updatedAt"))
+
+        flushAndClear()
+        val afterCreate = mockMvc.get("/api/competitions/{competitionId}", id)
+            .andReturn().response.contentAsString
+        assertEquals(createdAt, JsonPath.read<String>(afterCreate, "\$.createdAt"))
+
+        val updated = mockMvc.put("/api/competitions/{competitionId}", id) {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"name": "Friday Tournament Updated", "participantType": "INDIVIDUAL"}"""
+        }.andExpect {
+            status { isOk() }
+        }.andReturn().response.contentAsString
+        val updatedAt = JsonPath.read<String>(updated, "\$.updatedAt")
+
+        flushAndClear()
+        val afterUpdate = mockMvc.get("/api/competitions/{competitionId}", id)
+            .andReturn().response.contentAsString
+        assertEquals(createdAt, JsonPath.read<String>(afterUpdate, "\$.createdAt"))
+        assertEquals(updatedAt, JsonPath.read<String>(afterUpdate, "\$.updatedAt"))
+    }
+
+    @Test
     fun `update when not OPEN returns 409 COMPETITION_NOT_OPEN`() {
         val id = createCompetition("Friday Tournament")
         markInMatch(id)
@@ -167,6 +237,12 @@ class CompetitionControllerTests {
             status { isCreated() }
         }.andReturn().response.contentAsString
         return JsonPath.read<Number>(body, "\$.id").toLong()
+    }
+
+    /** Menulis perubahan ke database lalu mengosongkan persistence context, sehingga request berikutnya membaca dari database. */
+    private fun flushAndClear() {
+        entityManager.flush()
+        entityManager.clear()
     }
 
     /** Mensimulasikan bracket sudah dibuat (perubahan status ini nantinya dilakukan modul Match). */
