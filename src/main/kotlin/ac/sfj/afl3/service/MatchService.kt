@@ -1,9 +1,9 @@
 package ac.sfj.afl3.service
 
-import ac.sfj.afl3.domain.Competition
-import ac.sfj.afl3.domain.CompetitionStatus
-import ac.sfj.afl3.domain.Match
-import ac.sfj.afl3.domain.MatchStatus
+import ac.sfj.afl3.model.Competition
+import ac.sfj.afl3.model.CompetitionStatus
+import ac.sfj.afl3.model.Match
+import ac.sfj.afl3.model.MatchStatus
 import ac.sfj.afl3.dto.MatchResponse
 import ac.sfj.afl3.dto.SubmitMatchResultRequest
 import ac.sfj.afl3.dto.toResponse

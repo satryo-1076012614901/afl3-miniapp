@@ -1,7 +1,7 @@
 package ac.sfj.afl3.dto
 
-import ac.sfj.afl3.domain.Match
-import ac.sfj.afl3.domain.MatchStatus
+import ac.sfj.afl3.model.Match
+import ac.sfj.afl3.model.MatchStatus
 import jakarta.validation.constraints.PositiveOrZero
 import java.time.Instant
 

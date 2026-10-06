@@ -1,6 +1,6 @@
 package ac.sfj.afl3.repository
 
-import ac.sfj.afl3.domain.DatabaseProbe
+import ac.sfj.afl3.model.DatabaseProbe
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.core.RowMapper
 import org.springframework.stereotype.Repository

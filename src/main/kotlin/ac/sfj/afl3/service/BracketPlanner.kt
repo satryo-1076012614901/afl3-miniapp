@@ -1,6 +1,6 @@
 package ac.sfj.afl3.service
 
-import ac.sfj.afl3.domain.MatchStatus
+import ac.sfj.afl3.model.MatchStatus
 import org.springframework.stereotype.Component
 
 @Component

@@ -25,7 +25,7 @@ src/main/kotlin/ac/sfj/afl3/
 ├── controller/     # REST endpoint
 ├── service/        # Business logic dan batas transaksi
 ├── repository/     # Akses data
-├── domain/         # Entity dan model
+├── model/         # Entity dan model
 ├── dto/            # Objek request/response
 └── exception/      # Global exception handler dan exception aplikasi
 ```
@@ -37,7 +37,7 @@ Aturan antar-layer:
 - Entity JPA tidak dikembalikan langsung ke client; petakan ke `dto` di service.
 - Error dilempar sebagai exception (`ApiException` atau turunannya, mis. `ResourceNotFoundException`) dan diubah oleh `GlobalExceptionHandler` menjadi body standar `{"code":"<KODE>","message":"<pesan>"}` sesuai katalog error API (lihat *Kontrak API aplikasi → Error body dan katalog kode*).
 
-Setiap modul menambahkan file pada layer yang sesuai, misalnya `controller/CompetitionController.kt`, `service/CompetitionService.kt`, `repository/CompetitionRepository.kt`, `domain/Competition.kt`, dan `dto/CompetitionDto.kt`.
+Setiap modul menambahkan file pada layer yang sesuai, misalnya `controller/CompetitionController.kt`, `service/CompetitionService.kt`, `repository/CompetitionRepository.kt`, `model/Competition.kt`, dan `dto/CompetitionDto.kt`.
 
 ## Prasyarat
 

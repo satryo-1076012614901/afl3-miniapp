@@ -1,6 +1,6 @@
 package ac.sfj.afl3.repository
 
-import ac.sfj.afl3.domain.Participant
+import ac.sfj.afl3.model.Participant
 import org.springframework.data.jpa.repository.JpaRepository
 
 interface ParticipantRepository : JpaRepository<Participant, Long> {

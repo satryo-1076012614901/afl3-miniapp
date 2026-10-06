@@ -1,8 +1,8 @@
 package ac.sfj.afl3.dto
 
-import ac.sfj.afl3.domain.Competition
-import ac.sfj.afl3.domain.CompetitionStatus
-import ac.sfj.afl3.domain.ParticipantType
+import ac.sfj.afl3.model.Competition
+import ac.sfj.afl3.model.CompetitionStatus
+import ac.sfj.afl3.model.ParticipantType
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import java.time.Instant

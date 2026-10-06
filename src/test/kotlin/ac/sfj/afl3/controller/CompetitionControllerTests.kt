@@ -1,6 +1,6 @@
 package ac.sfj.afl3.controller
 
-import ac.sfj.afl3.domain.CompetitionStatus
+import ac.sfj.afl3.model.CompetitionStatus
 import ac.sfj.afl3.repository.CompetitionRepository
 import com.jayway.jsonpath.JsonPath
 import jakarta.persistence.EntityManager
