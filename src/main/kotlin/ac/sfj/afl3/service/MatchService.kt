@@ -92,7 +92,7 @@ class MatchService(
             )
         }
 
-        val match = requireMatch(competitionId, matchId)
+        val match = requireMatchForUpdate(competitionId, matchId)
         if (match.status != MatchStatus.READY) {
             throw ApiException(
                 HttpStatus.CONFLICT,
@@ -129,7 +129,7 @@ class MatchService(
     @Transactional
     fun undoResult(competitionId: Long, matchId: Long): MatchResponse {
         val competition = lockCompetition(competitionId)
-        val match = requireMatch(competitionId, matchId)
+        val match = requireMatchForUpdate(competitionId, matchId)
         val isAutomaticBye = listOf(match.participant1Id, match.participant2Id).count { it != null } == 1
         if (match.status != MatchStatus.COMPLETED || isAutomaticBye) {
             throw matchUndoNotAllowed()
@@ -195,6 +195,11 @@ class MatchService(
         matchRepository.findByIdAndCompetitionId(matchId, competitionId)
             ?: throw ResourceNotFoundException("Match", matchId)
 
+    /** Dipakai hanya dalam transaksi mutasi setelah row Competition dikunci lebih dahulu. */
+    private fun requireMatchForUpdate(competitionId: Long, matchId: Long) =
+        matchRepository.findByIdAndCompetitionIdForUpdate(matchId, competitionId)
+            ?: throw ResourceNotFoundException("Match", matchId)
+
     /**
      * Memajukan winner berdasarkan urutan source yang benar-benar menunjuk target. Cara ini tetap
      * valid untuk ronde ganjil, ketika match 1 dan 3 dapat menuju target yang sama. Target dengan
@@ -207,7 +212,7 @@ class MatchService(
             return
         }
 
-        val target = requireMatch(source.competitionId, nextMatchId)
+        val target = requireMatchForUpdate(source.competitionId, nextMatchId)
         val sources = progressionSources(source.competitionId, nextMatchId)
         setProgressionSlot(target, sources.indexOfSource(source), winnerId)
 
@@ -225,12 +230,12 @@ class MatchService(
      * boleh dibersihkan selama pertandingan sesudahnya belum selesai.
      */
     private fun clearProgression(competitionId: Long, source: Match) {
-        val target = requireMatch(competitionId, requireNotNull(source.nextMatchId))
+        val target = requireMatchForUpdate(competitionId, requireNotNull(source.nextMatchId))
         val sources = progressionSources(competitionId, requireNotNull(target.id))
 
         if (sources.size == 1) {
             target.nextMatchId?.let { downstreamId ->
-                val downstream = requireMatch(competitionId, downstreamId)
+                val downstream = requireMatchForUpdate(competitionId, downstreamId)
                 if (downstream.status == MatchStatus.COMPLETED) throw matchUndoNotAllowed()
                 val byeSources = progressionSources(competitionId, downstreamId)
                 setProgressionSlot(downstream, byeSources.indexOfSource(target), null)
