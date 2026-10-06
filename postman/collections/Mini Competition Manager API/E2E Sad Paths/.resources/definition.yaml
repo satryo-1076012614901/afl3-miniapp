@@ -1,0 +1,3 @@
+$kind: collection
+description: Verifies invalid winner and premature-final failures, then removes its test data.
+order: 5000

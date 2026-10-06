@@ -1,0 +1,3 @@
+$kind: collection
+description: Proves that a five-participant bracket requiring byes is rejected by the current MVP contract.
+order: 4000

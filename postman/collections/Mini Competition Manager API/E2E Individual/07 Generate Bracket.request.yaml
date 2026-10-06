@@ -1,0 +1,22 @@
+$kind: http-request
+url: '{{host}}/api/competitions/{{competitionId}}/matches'
+method: POST
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('four participants produce a linked three-match bracket', function () {
+        pm.response.to.have.status(201);
+        const matches = pm.response.json();
+        pm.expect(matches).to.have.lengthOf(3);
+        pm.expect(matches.map(match => match.status)).to.eql(['READY', 'READY', 'PENDING']);
+        const match1 = matches.find(match => match.round === 1 && match.matchNumber === 1);
+        const match2 = matches.find(match => match.round === 1 && match.matchNumber === 2);
+        const finalMatch = matches.find(match => match.nextMatchId === null);
+        pm.expect(match1.nextMatchId).to.eql(finalMatch.id);
+        pm.expect(match2.nextMatchId).to.eql(finalMatch.id);
+        pm.collectionVariables.set('match1Id', match1.id);
+        pm.collectionVariables.set('match2Id', match2.id);
+        pm.collectionVariables.set('finalMatchId', finalMatch.id);
+      });
+    language: text/javascript
+order: 7000

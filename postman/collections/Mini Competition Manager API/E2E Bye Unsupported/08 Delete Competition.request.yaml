@@ -1,0 +1,12 @@
+$kind: http-request
+url: '{{host}}/api/competitions/{{competitionId}}'
+method: DELETE
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('test competition is deleted', function () {
+        pm.response.to.have.status(204);
+      });
+      pm.collectionVariables.unset('competitionId');
+    language: text/javascript
+order: 8000

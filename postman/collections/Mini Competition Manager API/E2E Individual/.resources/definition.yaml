@@ -1,0 +1,3 @@
+$kind: collection
+description: Runs the complete four-player individual tournament lifecycle and removes its test data.
+order: 2000

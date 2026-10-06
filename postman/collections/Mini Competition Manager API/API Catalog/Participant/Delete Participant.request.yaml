@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{host}}/api/competitions/{{competitionId}}/participants/{{participantId}}"
+method: DELETE
+order: 8000

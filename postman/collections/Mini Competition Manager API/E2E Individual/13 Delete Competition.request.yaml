@@ -1,0 +1,19 @@
+$kind: http-request
+url: '{{host}}/api/competitions/{{competitionId}}'
+method: DELETE
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('test competition is deleted', function () {
+        pm.response.to.have.status(204);
+      });
+      pm.collectionVariables.unset('competitionId');
+      pm.collectionVariables.unset('participant1Id');
+      pm.collectionVariables.unset('participant2Id');
+      pm.collectionVariables.unset('participant3Id');
+      pm.collectionVariables.unset('participant4Id');
+      pm.collectionVariables.unset('match1Id');
+      pm.collectionVariables.unset('match2Id');
+      pm.collectionVariables.unset('finalMatchId');
+    language: text/javascript
+order: 13000

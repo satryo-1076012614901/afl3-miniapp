@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{host}}/api/competitions/{{competitionId}}/matches/{{finalMatchId}}/result'
+method: POST
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "winnerId": {{participant1Id}},
+      "score1": 21,
+      "score2": 18
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('final is completed and exposes the champion', function () {
+        pm.response.to.have.status(200);
+        const response = pm.response.json();
+        pm.expect(response.status).to.eql('COMPLETED');
+        pm.expect(response.winnerId).to.eql(Number(pm.collectionVariables.get('participant1Id')));
+      });
+    language: text/javascript
+order: 10000
