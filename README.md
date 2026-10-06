@@ -12,6 +12,29 @@
 | Jessy Rosinta | Participant Service | Testing dan dokumentasi |
 | Fariz | Match Service | System design |
 
+## Jalankan aplikasi
+
+Running with Docker:
+
+```sh
+git clone https://github.com/satryo-1076012614901/afl3-miniapp.git
+cd afl3-miniapp
+docker compose -f compose.local.yml up -d --build
+```
+
+Running with local DB (no Docker):
+
+```sh
+git clone https://github.com/satryo-1076012614901/afl3-miniapp.git
+cd afl3-miniapp
+createuser -h localhost -U postgres --pwprompt miniapp
+createdb -h localhost -U postgres --owner=miniapp miniapp_db
+export DB_URL=jdbc:postgresql://localhost:5432/miniapp_db
+export DB_USERNAME=miniapp
+export DB_PASSWORD='password-set-for-miniapp'
+bash gradlew bootRun
+```
+
 ## Teknis
 
 Backend REST API untuk aplikasi Android **Mini Competition Manager** (turnamen *single-elimination*), tugas AFL3 Visual Programming. Satu backend terdiri atas tiga modul — **Competition**, **Participant**, dan **Match** — dan setiap modul dikerjakan oleh satu anggota tim.
@@ -320,7 +343,7 @@ class CompetitionController(private val competitionService: CompetitionService) 
    git clone https://github.com/satryo-1076012614901/afl3-miniapp.git
    cd afl3-miniapp
    ```
-3. Buat file `.env` dari template (file `.env` tidak di-commit):
+3. Opsional untuk Compose; jika menjalankan backend dari IDE/Gradle, buat file `.env` dari template (file `.env` tidak di-commit):
    ```powershell
    Copy-Item .env.example .env
    ```
