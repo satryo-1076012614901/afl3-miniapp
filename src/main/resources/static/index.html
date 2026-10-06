@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mini Competition Manager · API Playground</title>
+  <script>
+    // A fresh URL per page load bypasses cached UI assets without a frontend build.
+    const assetVersion = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const stylesheet = document.createElement("link");
+    stylesheet.rel = "stylesheet";
+    stylesheet.href = `./playground.css?v=${assetVersion}`;
+    document.head.appendChild(stylesheet);
+    const playgroundScript = document.createElement("script");
+    playgroundScript.src = `./playground.js?v=${assetVersion}`;
+    playgroundScript.async = false;
+    window.addEventListener("DOMContentLoaded", () => document.head.appendChild(playgroundScript), { once: true });
+  </script>
+</head>
+<body>
+<header><div class="brand">M<span>CM</span></div><div><p class="eyebrow">AFL3 / API PLAYGROUND</p><h1>Mini Competition Manager</h1></div><button id="refresh" class="secondary">↻ Refresh</button></header>
+<main>
+  <div class="intro"><span id="health" class="badge">Memeriksa API…</span></div>
+  <div id="feedback" role="status" aria-live="polite" hidden></div>
+  <nav class="wizard-steps" aria-label="Langkah kompetisi">
+    <button data-step="1"><span>01</span> Kompetisi</button>
+    <button data-step="2"><span>02</span> Peserta</button>
+    <button data-step="3"><span>03</span> Bracket</button>
+  </nav>
+  <div id="competition-detail" class="panel wizard-summary" hidden></div>
+  <div class="wizard-controls"><button id="previous-step" class="secondary">← Kembali</button><p id="step-progress" class="muted" role="status" aria-live="polite"></p><button id="next-step">Lanjut →</button></div>
+  <div class="workspace">
+    <section id="step-1" class="panel wizard-panel" aria-label="Langkah 01: Kompetisi"><div class="section-heading"><h2 tabindex="-1">01 · Kompetisi</h2><span id="competition-count" class="count">0</span></div>
+      <form id="competition-form"><fieldset><legend id="competition-form-title">Buat kompetisi</legend>
+        <label>Nama kompetisi<input name="name" required maxlength="255" placeholder="Contoh: Campus Cup"></label>
+        <label>Jenis peserta<select name="participantType"><option value="INDIVIDUAL">Individual</option><option value="TEAM">Tim</option></select></label>
+        <div class="actions"><button type="submit" id="competition-save">Buat kompetisi</button><button type="button" id="competition-cancel" class="secondary" hidden>Batal</button></div>
+      </fieldset></form>
+      <div id="competitions" class="competition-list"></div>
+    </section>
+    <div id="selected-content" hidden>
+      <section id="step-2" class="panel wizard-panel" aria-label="Langkah 02: Peserta" hidden>
+        <div class="section-heading"><h2 tabindex="-1">02 · Peserta</h2><span id="participant-count" class="count">0 / 16</span></div>
+        <p id="participant-hint" class="muted"></p>
+        <form id="participant-form"><fieldset><legend id="participant-form-title">Tambah peserta</legend>
+          <div class="form-grid"><label>Nama peserta / tim<input name="name" required placeholder="Nama peserta"></label><label id="members-label" hidden>Anggota tim (satu nama per baris)<textarea name="members" rows="3" placeholder="Nama anggota"></textarea></label></div>
+          <div class="actions"><button type="submit" id="participant-save">Tambah peserta</button><button type="button" id="participant-cancel" class="secondary" hidden>Batal</button></div>
+        </fieldset></form>
+        <div id="participants" class="participant-cards"></div>
+      </section>
+      <section id="step-3" class="panel wizard-panel" aria-label="Langkah 03: Bracket" hidden>
+        <div class="section-heading"><h2 tabindex="-1">03 · Bracket</h2><div class="actions"><button id="view-bracket" class="secondary">View Bracket Mode</button><button id="generate">Generate bracket</button><button id="reset" class="danger">Reset bracket</button></div></div>
+        <p id="bracket-hint" class="muted"></p><div id="bracket" class="bracket"></div>
+      </section>
+    </div>
+  </div>
+  <section class="panel inspector"><div class="section-heading"><div><p class="eyebrow">UNDER THE HOOD</p><h2>Request & response</h2></div><button id="clear-log" class="secondary">Bersihkan log</button></div><p class="muted">Setiap aksi memakai endpoint API yang sama dengan aplikasi Android. Request terbaru di atas.</p><div id="requests"><p class="empty">Belum ada request.</p></div></section>
+</main>
+<footer>Mini Competition Manager <span>Single elimination · 2–16 peserta</span></footer>
+</body></html>

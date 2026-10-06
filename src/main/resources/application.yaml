@@ -5,6 +5,12 @@ spring:
     # Saat dijalankan dari IDE/Gradle, variabel dibaca dari file .env di root project (jika ada).
     # Environment variable yang di-set langsung (container/CI) tetap lebih diprioritaskan.
     import: optional:file:.env[.properties]
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          # UI playground selalu mengambil HTML/CSS/JS terbaru setelah aplikasi diperbarui.
+          no-store: true
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
