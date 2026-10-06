@@ -129,11 +129,15 @@ Aturan tambahan:
 
 ### 2.4 Pembagian modul
 
-| Modul | Penanggung jawab | Branch | File yang dibuat |
+Setiap anggota bertanggung jawab atas satu modul utama dari entity dan migration sampai controller serta test modulnya. Tanggung jawab tambahan bersifat lintas modul dan dikerjakan bersama pemilik modul terkait ketika menyentuh kode mereka.
+
+| Anggota | Tanggung jawab utama | Cakupan utama | Tanggung jawab tambahan |
 |---|---|---|---|
-| Competition | Satryo | `feature/competition` | `model/Competition.kt`, `model/ParticipantType.kt`, `model/CompetitionStatus.kt`, `repository/CompetitionRepository.kt`, `service/CompetitionService.kt`, `controller/CompetitionController.kt`, `dto/CompetitionDto.kt`, migration `V1__create_competition.sql` |
-| Participant | Jessy | `feature/participant` | `model/Participant.kt`, `repository/ParticipantRepository.kt`, `service/ParticipantService.kt`, `controller/ParticipantController.kt`, `dto/ParticipantDto.kt`, migration `participant` |
-| Match | Fariz | `feature/match` | `model/Match.kt`, `repository/MatchRepository.kt`, `service/MatchService.kt`, `controller/MatchController.kt`, `dto/MatchDto.kt`, migration `match` |
+| Satryo Nugroho | **Competition Service** | Model, repository, service, controller, DTO, migration, dan test Competition | **Project scaffold:** kesiapan environment, konfigurasi awal aplikasi, build, dan kebutuhan dasar agar project dapat dijalankan |
+| Jessy Rosinta | **Participant Service** | Model, repository, service, controller, DTO, migration, dan test Participant | **Testing & dokumentasi:** membantu menjaga cakupan pengujian dan dokumentasi project tetap sesuai implementasi |
+| Fariz | **Match Service** | Model, repository, service, controller, DTO, migration, bracket planner, dan test Match | **System design:** rancangan arsitektur, kontrak antarmodul, alur bracket, serta konsistensi aturan bisnis sistem |
+
+Pembagian tersebut menunjukkan ownership dan koordinator utama, bukan batas kolaborasi. Perubahan lintas modul tetap dibahas dan di-review oleh pemilik modul yang terdampak.
 
 **File bersama** — `application.yaml`, `build.gradle.kts`, `config/`, `exception/GlobalExceptionHandler.kt`, `Dockerfile`, dan file `compose*.yml` — dipakai semua modul. Perubahan pada file bersama wajib didiskusikan dulu dengan tim dan diajukan sebagai Pull Request kecil tersendiri agar tidak menimbulkan konflik.
 
