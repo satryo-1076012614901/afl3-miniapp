@@ -13,6 +13,8 @@ import ac.sfj.afl3.repository.CompetitionRepository
 import ac.sfj.afl3.repository.MatchRepository
 import ac.sfj.afl3.repository.ParticipantRepository
 import ac.sfj.afl3.dto.SubmitMatchResultRequest
+import jakarta.persistence.EntityManager
+import jakarta.persistence.PersistenceContext
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -36,6 +38,9 @@ class MatchServiceIntegrationTests {
 
     @Autowired
     private lateinit var participantRepository: ParticipantRepository
+
+    @PersistenceContext
+    private lateinit var entityManager: EntityManager
 
     @Test
     fun `undo clears result and fixed downstream slot`() {
@@ -131,6 +136,28 @@ class MatchServiceIntegrationTests {
         assertEquals(MatchStatus.COMPLETED, completedFinal.status)
         assertEquals(requireNotNull(participants[0].id), completedFinal.winnerId)
         assertEquals(CompetitionStatus.COMPLETED, competitionRepository.findById(competitionId).orElseThrow().status)
+    }
+
+    @Test
+    fun `generate and submit responses carry persisted match timestamps`() {
+        val setup = generatedBracket("Timestamps")
+        val created = setup.matches.first()
+
+        entityManager.flush()
+        entityManager.clear()
+        val persistedAfterCreate = matchService.findById(setup.competitionId, created.id)
+        assertEquals(created.createdAt, persistedAfterCreate.createdAt)
+        assertEquals(created.updatedAt, persistedAfterCreate.updatedAt)
+
+        val updated = matchService.submitResult(
+            setup.competitionId,
+            created.id,
+            SubmitMatchResultRequest(setup.participantIds[0], 21, 10),
+        )
+        entityManager.flush()
+        entityManager.clear()
+        val persistedAfterUpdate = matchService.findById(setup.competitionId, created.id)
+        assertEquals(updated.updatedAt, persistedAfterUpdate.updatedAt)
     }
 
     @Test

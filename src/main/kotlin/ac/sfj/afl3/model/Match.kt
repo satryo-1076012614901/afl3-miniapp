@@ -10,6 +10,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.PreUpdate
 import jakarta.persistence.Table
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 @Entity
 @Table(name = "match")
@@ -50,13 +51,21 @@ class Match(
     var id: Long? = null
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    var createdAt: Instant = Instant.now()
+    var createdAt: Instant = now()
 
     @Column(name = "updated_at", nullable = false)
-    var updatedAt: Instant = Instant.now()
+    var updatedAt: Instant = createdAt
 
     @PreUpdate
     fun updateTimestamp() {
-        updatedAt = Instant.now()
+        updatedAt = now()
+    }
+
+    private companion object {
+        /**
+         * PostgreSQL `timestamptz` menyimpan presisi mikrodetik. Pemotongan ini memastikan timestamp
+         * pada response sama persis dengan nilai yang dibaca kembali dari database.
+         */
+        fun now(): Instant = Instant.now().truncatedTo(ChronoUnit.MICROS)
     }
 }
