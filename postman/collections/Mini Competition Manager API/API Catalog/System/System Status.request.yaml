@@ -1,0 +1,5 @@
+$kind: http-request
+description: Checks application and database availability.
+url: "{{host}}/system/status"
+method: GET
+order: 1000

@@ -1,12 +1,21 @@
 # Deploy di node server, di belakang Traefik v3.7 (network eksternal `traefik`).
 #
-# Satu file dipakai untuk dua environment. Environment dipilih lewat --env-file dan nama project:
-#   docker compose -p afl3-production --env-file .env.production -f compose.server.yml up -d
-#   docker compose -p afl3-develop    --env-file .env.develop    -f compose.server.yml up -d
+# File ini TIDAK disimpan di node. Perintah compose dijalankan dari runner GitHub (deploy.yml)
+# atau dari laptop dengan DOCKER_HOST=ssh://<node>, sehingga Docker CLI mengendalikan daemon di node via SSH.
+# Nilai variabel berasal dari environment proses: GitHub Secrets/Variables (workflow) atau --env-file (laptop).
+#
+# Deploy manual dari laptop (PowerShell), setelah `docker login ghcr.io`:
+#   $env:DOCKER_HOST = "ssh://afl3-node"
+#   docker compose -p afl3-develop    --env-file .env.develop    -f compose.server.yml up -d --wait
+#   docker compose -p afl3-production --env-file .env.production -f compose.server.yml up -d --wait
+#   Remove-Item Env:DOCKER_HOST
 #
 # Routing Traefik:
 #   https://${API_HOST}/${APP_ENV}/...  ->  container app port 8080
 #   Prefix /${APP_ENV} dilepas oleh middleware StripPrefix sebelum diteruskan ke aplikasi.
+#
+# pull_policy: always -> setiap `up -d` menarik image dari GHCR memakai kredensial milik sisi yang
+# menjalankan compose (runner/laptop); node tidak perlu login GHCR.
 #
 # Uji coba:
 #   curl https://${API_HOST}/${APP_ENV}/system/status
@@ -14,18 +23,21 @@
 services:
   app:
     image: ${APP_IMAGE:?APP_IMAGE belum di-set}
+    # Tag :production / :develop bersifat mutable; tanpa ini `up -d` tetap memakai image lama di node.
+    pull_policy: always
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          # Batas memori container. JVM memakai maksimal 75% dari nilai ini sebagai heap (MaxRAMPercentage).
+          memory: ${APP_MEM_LIMIT:?APP_MEM_LIMIT belum di-set}
     environment:
       APP_ENV: ${APP_ENV:?APP_ENV belum di-set}
       DB_SCHEMA: ${DB_SCHEMA:?DB_SCHEMA belum di-set}
-      DB_RW_URL: ${DB_RW_URL:?DB_RW_URL belum di-set}
-      DB_RW_USERNAME: ${DB_RW_USERNAME:?DB_RW_USERNAME belum di-set}
-      DB_RW_PASSWORD: ${DB_RW_PASSWORD:?DB_RW_PASSWORD belum di-set}
-      DB_RO_URL: ${DB_RO_URL:?DB_RO_URL belum di-set}
-      DB_RO_USERNAME: ${DB_RO_USERNAME:?DB_RO_USERNAME belum di-set}
-      DB_RO_PASSWORD: ${DB_RO_PASSWORD:?DB_RO_PASSWORD belum di-set}
-      DB_RW_POOL_SIZE: ${DB_RW_POOL_SIZE:-10}
-      DB_RO_POOL_SIZE: ${DB_RO_POOL_SIZE:-10}
+      DB_URL: ${DB_URL:?DB_URL belum di-set}
+      DB_USERNAME: ${DB_USERNAME:?DB_USERNAME belum di-set}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD belum di-set}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
     networks:
       - traefik
     labels:

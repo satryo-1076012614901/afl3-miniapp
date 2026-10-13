@@ -1,0 +1,16 @@
+$kind: http-request
+url: "{{host}}/api/competitions/{{competitionId}}/participants"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "Player 1"
+    }
+scripts:
+  - type: afterResponse
+    code: if (pm.response.code === 201) pm.collectionVariables.set('participantId', pm.response.json().id);
+    language: text/javascript
+order: 1000

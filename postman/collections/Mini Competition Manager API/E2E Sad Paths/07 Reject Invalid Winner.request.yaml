@@ -1,0 +1,19 @@
+$kind: http-request
+url: '{{host}}/api/competitions/{{competitionId}}/matches/{{match1Id}}/result'
+method: POST
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    { "winnerId": 9223372036854775807 }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('winner outside the match is rejected', function () {
+        pm.response.to.have.status(400);
+        pm.expect(pm.response.json().code).to.eql('INVALID_WINNER');
+      });
+    language: text/javascript
+order: 7000

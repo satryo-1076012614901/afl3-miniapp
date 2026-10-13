@@ -1,0 +1,14 @@
+$kind: http-request
+url: "{{host}}/api/competitions/{{competitionId}}/matches/{{matchId}}/result"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "winnerId": {{winnerId}},
+      "score1": 21,
+      "score2": 10
+    }
+order: 4000

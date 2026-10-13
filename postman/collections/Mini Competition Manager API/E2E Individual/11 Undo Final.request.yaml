@@ -1,0 +1,16 @@
+$kind: http-request
+url: '{{host}}/api/competitions/{{competitionId}}/matches/{{finalMatchId}}/undo'
+method: POST
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('undo reopens the final', function () {
+        pm.response.to.have.status(200);
+        const response = pm.response.json();
+        pm.expect(response.status).to.eql('READY');
+        pm.expect(response.winnerId).to.eql(null);
+        pm.expect(response.score1).to.eql(null);
+        pm.expect(response.score2).to.eql(null);
+      });
+    language: text/javascript
+order: 11000

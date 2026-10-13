@@ -1,8 +1,45 @@
 # AFL3 — Mini Competition Manager (Backend)
 
+## Ide
+
+**Mini Competition Manager** membantu panitia mengelola turnamen *single-elimination* dari pendaftaran peserta, pembentukan bracket, pencatatan hasil, hingga penentuan juara. Aplikasi ini dibuat untuk menggantikan pengelolaan bracket manual yang rawan salah dan sulit dipantau.
+
+## Pembagian tugas
+
+| Anggota | Tanggung jawab utama | Tanggung jawab tambahan |
+|---|---|---|
+| Satryo Nugroho | Competition Service | Project scaffold dan kesiapan environment |
+| Jessy Rosinta | Participant Service | Testing dan dokumentasi |
+| Fariz | Match Service | System design |
+
+## Jalankan aplikasi
+
+Running with Docker:
+
+```sh
+git clone https://github.com/satryo-1076012614901/afl3-miniapp.git
+cd afl3-miniapp
+docker compose -f compose.local.yml up -d --build
+```
+
+Running with local DB (no Docker):
+
+```sh
+git clone https://github.com/satryo-1076012614901/afl3-miniapp.git
+cd afl3-miniapp
+createuser -h localhost -U postgres --pwprompt miniapp
+createdb -h localhost -U postgres --owner=miniapp miniapp_db
+export DB_URL=jdbc:postgresql://localhost:5432/miniapp_db
+export DB_USERNAME=miniapp
+export DB_PASSWORD='password-set-for-miniapp'
+bash gradlew bootRun
+```
+
+## Teknis
+
 Backend REST API untuk aplikasi Android **Mini Competition Manager** (turnamen *single-elimination*), tugas AFL3 Visual Programming. Satu backend terdiri atas tiga modul — **Competition**, **Participant**, dan **Match** — dan setiap modul dikerjakan oleh satu anggota tim.
 
-Dokumen ini adalah panduan kerja tim: struktur folder, aturan penempatan kode, dan langkah dari mulai menulis kode, uji coba, hingga merge. Referensi teknis yang lebih rinci (environment variable, Docker image, deploy, routing database RW/RO) ada di [`HELP.md`](HELP.md).
+Dokumen ini adalah panduan kerja tim: struktur folder, aturan penempatan kode, dan langkah dari mulai menulis kode, uji coba, hingga merge. Referensi teknis yang lebih rinci (environment variable, Docker image, deploy, koneksi database, dan Flyway) ada di [`HELP.md`](HELP.md).
 
 ---
 
@@ -11,12 +48,16 @@ Dokumen ini adalah panduan kerja tim: struktur folder, aturan penempatan kode, d
 ```plain
 afl3-miniapp/
 ├── README.md                 # Panduan kerja tim (dokumen ini)
-├── HELP.md                   # Referensi teknis: env, Docker, deploy, routing RW/RO, Flyway
+├── HELP.md                   # Referensi teknis: env, Docker, deploy, database, Flyway
+├── .github/workflows/
+│   ├── ci.yml                # Build + test untuk setiap Pull Request ke main/deploy
+│   └── deploy.yml            # Deploy otomatis: main -> /develop, deploy -> /production
 ├── Dockerfile                # Build image aplikasi (multi-stage, JDK 25 -> JRE 25)
 ├── .dockerignore             # Whitelist file yang dikirim ke Docker saat build
 ├── compose.local.yml         # PostgreSQL 16 + aplikasi untuk development lokal
 ├── compose.server.yml        # Deploy di server (di belakang Traefik) untuk /production dan /develop
-├── .env                      # Konfigurasi lokal            (TIDAK di-commit)
+├── .env.example              # Template .env lokal (di-commit)
+├── .env                      # Konfigurasi lokal, salinan .env.example (TIDAK di-commit)
 ├── .env.production           # Konfigurasi server production (TIDAK di-commit)
 ├── .env.develop              # Konfigurasi server develop    (TIDAK di-commit)
 ├── build.gradle.kts          # Dependency dan konfigurasi build
@@ -27,11 +68,11 @@ afl3-miniapp/
     ├── main/
     │   ├── kotlin/ac/sfj/afl3/
     │   │   ├── Afl3Application.kt   # Entry point aplikasi (jangan ditambah logika)
-    │   │   ├── config/              # Konfigurasi Spring (DataSourceConfig, WebConfig, dll.)
+    │   │   ├── config/              # Konfigurasi Spring (WebConfig, dll.)
     │   │   ├── controller/          # REST endpoint
     │   │   ├── service/             # Business logic + batas transaksi
     │   │   ├── repository/          # Akses data (Spring Data JPA / JdbcTemplate)
-    │   │   ├── domain/              # Entity JPA dan model domain
+    │   │   ├── model/              # Entity JPA dan model domain
     │   │   ├── dto/                 # Objek request/response + mapper entity -> response
     │   │   └── exception/           # GlobalExceptionHandler dan exception aplikasi
     │   └── resources/
@@ -44,14 +85,14 @@ File yang sudah ada sebagai contoh dan acuan:
 
 | File | Fungsi |
 |---|---|
-| `config/DataSourceConfig.kt` | Routing koneksi database: transaksi read-only ke endpoint RO, selain itu ke RW |
 | `controller/SystemController.kt` | Endpoint uji coba `GET /system/status` |
-| `service/SystemStatusService.kt` | Contoh service yang mengatur transaksi RW dan RO |
+| `service/SystemStatusService.kt` | Contoh service untuk memeriksa koneksi database |
 | `repository/DatabaseProbeRepository.kt` | Contoh repository berbasis `JdbcTemplate` |
-| `domain/DatabaseProbe.kt` | Contoh model domain |
+| `model/DatabaseProbe.kt` | Contoh model domain |
 | `dto/SystemStatusResponse.kt` | Contoh DTO response |
-| `exception/GlobalExceptionHandler.kt` | Mengubah exception menjadi response `ProblemDetail` (RFC 9457) |
-| `exception/ResourceNotFoundException.kt` | Exception untuk data tidak ditemukan (HTTP 404) |
+| `exception/ApiError.kt` | Body error `ApiErrorResponse`, enum `ApiErrorCode` (katalog kode error), dan `ApiException` untuk pelanggaran aturan bisnis |
+| `exception/ResourceNotFoundException.kt` | Turunan `ApiException` untuk data tidak ditemukan (HTTP 404, kode `<RESOURCE>_NOT_FOUND`) |
+| `exception/GlobalExceptionHandler.kt` | Mengubah seluruh exception menjadi body error standar `{"code","message"}` |
 
 ---
 
@@ -66,7 +107,7 @@ Client (Android)
 controller/   menerima request DTO, validasi (@Valid), memanggil service, mengembalikan response DTO
       │
       ▼
-service/      business logic; menentukan @Transactional (RW) atau @Transactional(readOnly = true) (RO)
+service/      business logic dan batas transaksi (@Transactional)
       │
       ▼
 repository/   query ke database
@@ -74,7 +115,7 @@ repository/   query ke database
       ▼
 PostgreSQL    schema sesuai environment (public / develop / production)
 
-exception/GlobalExceptionHandler  <-- menangkap exception dari layer mana pun, mengembalikan ProblemDetail
+exception/GlobalExceptionHandler  <-- menangkap exception dari layer mana pun, mengembalikan {"code","message"}
 ```
 
 ### 2.2 Tanggung jawab dan aturan tiap layer
@@ -82,49 +123,42 @@ exception/GlobalExceptionHandler  <-- menangkap exception dari layer mana pun, m
 | Layer | Folder | Isi | Boleh memanggil | Tidak boleh |
 |---|---|---|---|---|
 | Controller | `controller/` | Mapping URL, validasi input, kode status HTTP | `service/`, `dto/` | Mengakses `repository/`, menulis business logic, mengembalikan entity |
-| Service | `service/` | Business logic, batas transaksi, mapping entity <-> DTO | `repository/`, `domain/`, `dto/`, `exception/` | Mengetahui detail HTTP (`HttpServletRequest`, `ResponseEntity`) |
-| Repository | `repository/` | Query database | `domain/` | Business logic, DTO |
-| Domain | `domain/` | Entity JPA (`@Entity`) dan model domain | — | Bergantung pada layer lain |
-| DTO | `dto/` | Request/response dan fungsi mapper `Entity.toResponse()` | `domain/` | Logika selain mapping |
+| Service | `service/` | Business logic, batas transaksi, mapping entity <-> DTO | `repository/`, `model/`, `dto/`, `exception/` | Mengetahui detail HTTP (`HttpServletRequest`, `ResponseEntity`) |
+| Repository | `repository/` | Query database | `model/` | Business logic, DTO |
+| Model | `model/` | Entity JPA (`@Entity`) dan model domain | — | Bergantung pada layer lain |
+| DTO | `dto/` | Request/response dan fungsi mapper `Entity.toResponse()` | `model/` | Logika selain mapping |
 | Exception | `exception/` | Exception aplikasi dan `GlobalExceptionHandler` | — | — |
 | Config | `config/` | Bean konfigurasi Spring | — | Business logic |
 
 Aturan tambahan:
 
-1. **Transaksi ditentukan di service.** Beri `@Transactional(readOnly = true)` di level class service, lalu `@Transactional` pada method yang menulis data. Transaksi read-only diarahkan ke database RO, transaksi biasa ke RW.
-2. **Read-after-write di transaksi yang sama.** Data yang baru ditulis lalu langsung dibaca (mis. membuat match lalu menampilkan bracket) wajib diproses dalam satu method `@Transactional`, karena database RO dapat tertinggal dari RW.
+1. **Transaksi ditentukan di service.** Beri `@Transactional(readOnly = true)` di level class service sebagai penanda operasi baca, lalu `@Transactional` pada method yang menulis data. Keduanya memakai datasource PostgreSQL yang sama.
+2. **Operasi atomik berada di transaksi yang sama.** Perubahan yang menyentuh beberapa tabel (mis. membuat bracket dan mengubah status kompetisi) wajib diproses dalam satu method `@Transactional` agar seluruh perubahan commit atau rollback bersama.
 3. **Entity tidak keluar dari service.** Controller selalu menerima dan mengembalikan DTO.
-4. **Error dilempar sebagai exception**, misalnya `throw ResourceNotFoundException("Competition", id)`. Jangan membuat response error manual di controller.
-5. **Schema database hanya diubah melalui migration Flyway.** Hibernate berjalan dengan `ddl-auto: validate`, sehingga aplikasi gagal start jika entity tidak sesuai dengan tabel.
+4. **Error dilempar sebagai exception.** Pakai `ResourceNotFoundException("Competition", id)` untuk data tidak ditemukan, dan `ApiException(HttpStatus.CONFLICT, ApiErrorCode.COMPETITION_NOT_OPEN, "...")` untuk pelanggaran aturan bisnis. Jangan membuat response error manual di controller.
+5. **Error API mengikuti satu kontrak.** Seluruh response error memakai body `{"code":"<KODE>","message":"<pesan>"}`. Daftar kode error ada di [`HELP.md`](HELP.md#kontrak-api-aplikasi).
+6. **Schema database hanya diubah melalui migration Flyway.** Hibernate berjalan dengan `ddl-auto: validate`, sehingga aplikasi gagal start jika entity tidak sesuai dengan tabel.
 
 ### 2.3 Konvensi penamaan
 
 | Jenis | Pola | Contoh |
 |---|---|---|
-| Entity | `<Nama>` (tunggal) | `domain/Competition.kt` |
+| Entity | `<Nama>` (tunggal) | `model/Competition.kt` |
 | Repository | `<Nama>Repository` | `repository/CompetitionRepository.kt` |
 | Service | `<Nama>Service` | `service/CompetitionService.kt` |
 | Controller | `<Nama>Controller` | `controller/CompetitionController.kt` |
 | DTO | `<Nama>Request`, `<Nama>Response` dalam `dto/<Nama>Dto.kt` | `dto/CompetitionDto.kt` |
 | Tabel | snake_case tunggal | `competition`, `participant`, `match` |
 | Migration | `V<versi>__<aksi>_<objek>.sql` | `V1__create_competition.sql` |
-| URL | kata benda jamak, kebab-case | `/competitions`, `/competitions/{id}` |
-
-### 2.4 Pembagian modul
-
-| Modul | Branch | File yang dibuat |
-|---|---|---|
-| Competition | `feature/competition` | `domain/Competition.kt`, `repository/CompetitionRepository.kt`, `service/CompetitionService.kt`, `controller/CompetitionController.kt`, `dto/CompetitionDto.kt`, migration `competition` |
-| Participant | `feature/participant` | `domain/Participant.kt`, `repository/ParticipantRepository.kt`, `service/ParticipantService.kt`, `controller/ParticipantController.kt`, `dto/ParticipantDto.kt`, migration `participant` |
-| Match | `feature/match` | `domain/Match.kt`, `repository/MatchRepository.kt`, `service/MatchService.kt`, `controller/MatchController.kt`, `dto/MatchDto.kt`, migration `match` |
+| URL | diawali `/api`, kata benda jamak, kebab-case | `/api/competitions`, `/api/competitions/{competitionId}` |
 
 **File bersama** — `application.yaml`, `build.gradle.kts`, `config/`, `exception/GlobalExceptionHandler.kt`, `Dockerfile`, dan file `compose*.yml` — dipakai semua modul. Perubahan pada file bersama wajib didiskusikan dulu dengan tim dan diajukan sebagai Pull Request kecil tersendiri agar tidak menimbulkan konflik.
 
 Jika tabel suatu modul memiliki foreign key ke tabel modul lain (mis. `participant` ke `competition`), migration modul yang direferensikan harus di-merge lebih dulu.
 
-### 2.5 Contoh satu modul
+### 2.4 Contoh satu modul
 
-Contoh berikut adalah **ilustrasi** penempatan kode untuk modul Competition. Kolom, validasi, dan endpoint disesuaikan dengan desain tim.
+Contoh berikut adalah **ilustrasi ringkas** penempatan kode, bukan kontrak API lengkap. Implementasi nyata modul Competition (termasuk `participantType`, `status`, dan aturan bisnisnya) dapat dilihat di package terkait, beserta test-nya di `src/test/kotlin/ac/sfj/afl3/controller/CompetitionControllerTests.kt`. Field, validasi, status, serta response final wajib mengikuti [kontrak API di `HELP.md`](HELP.md#kontrak-api-aplikasi).
 
 **`src/main/resources/db/migration/V1__create_competition.sql`**
 
@@ -138,10 +172,10 @@ CREATE TABLE competition (
 
 Tulis migration **tanpa** prefix schema (`competition`, bukan `production.competition`) agar migration yang sama berlaku untuk semua environment.
 
-**`domain/Competition.kt`**
+**`model/Competition.kt`**
 
 ```kotlin
-package ac.sfj.afl3.domain
+package ac.sfj.afl3.model
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -171,7 +205,7 @@ class Competition(
 ```kotlin
 package ac.sfj.afl3.repository
 
-import ac.sfj.afl3.domain.Competition
+import ac.sfj.afl3.model.Competition
 import org.springframework.data.jpa.repository.JpaRepository
 
 interface CompetitionRepository : JpaRepository<Competition, Long>
@@ -182,7 +216,7 @@ interface CompetitionRepository : JpaRepository<Competition, Long>
 ```kotlin
 package ac.sfj.afl3.dto
 
-import ac.sfj.afl3.domain.Competition
+import ac.sfj.afl3.model.Competition
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import java.time.Instant
@@ -211,7 +245,7 @@ fun Competition.toResponse() = CompetitionResponse(
 ```kotlin
 package ac.sfj.afl3.service
 
-import ac.sfj.afl3.domain.Competition
+import ac.sfj.afl3.model.Competition
 import ac.sfj.afl3.dto.CompetitionRequest
 import ac.sfj.afl3.dto.CompetitionResponse
 import ac.sfj.afl3.dto.toResponse
@@ -222,7 +256,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 @Service
-@Transactional(readOnly = true)               // default: baca dari database RO
+@Transactional(readOnly = true)               // default: operasi baca
 class CompetitionService(private val competitionRepository: CompetitionRepository) {
 
     fun findAll(): List<CompetitionResponse> =
@@ -231,13 +265,13 @@ class CompetitionService(private val competitionRepository: CompetitionRepositor
     fun findById(id: Long): CompetitionResponse =
         getEntity(id).toResponse()
 
-    @Transactional                            // menulis: database RW
+    @Transactional                            // operasi tulis
     fun create(request: CompetitionRequest): CompetitionResponse =
         competitionRepository.save(Competition(name = request.name)).toResponse()
 
     @Transactional
     fun update(id: Long, request: CompetitionRequest): CompetitionResponse {
-        val competition = getEntity(id)       // dibaca dari RW karena berada di transaksi tulis
+        val competition = getEntity(id)       // dibaca dalam transaksi tulis yang sama
         competition.name = request.name       // disimpan otomatis saat transaksi commit
         return competition.toResponse()
     }
@@ -273,7 +307,7 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@RequestMapping("/competitions")
+@RequestMapping("/api/competitions")
 class CompetitionController(private val competitionService: CompetitionService) {
 
     @GetMapping
@@ -309,7 +343,10 @@ class CompetitionController(private val competitionService: CompetitionService) 
    git clone https://github.com/satryo-1076012614901/afl3-miniapp.git
    cd afl3-miniapp
    ```
-3. Buat file `.env` di root project dengan isi template pada bagian *Konfigurasi environment* di [`HELP.md`](HELP.md). File ini tidak di-commit.
+3. Opsional untuk Compose; jika menjalankan backend dari IDE/Gradle, buat file `.env` dari template (file `.env` tidak di-commit):
+   ```powershell
+   Copy-Item .env.example .env
+   ```
 4. Jalankan aplikasi dan pastikan lingkungan lokal berfungsi:
    ```powershell
    docker compose -f compose.local.yml up -d --build
@@ -344,7 +381,7 @@ git switch -c feature/competition
 ### Langkah 2 — Tulis kode dengan urutan berikut
 
 1. **Migration** di `src/main/resources/db/migration/` (lihat konvensi nomor versi di Langkah 5).
-2. **Entity** di `domain/`, sesuai dengan tabel di migration.
+2. **Entity** di `model/`, sesuai dengan tabel di migration.
 3. **Repository** di `repository/`.
 4. **DTO** di `dto/`: request, response, dan mapper `toResponse()`.
 5. **Service** di `service/`: business logic dan anotasi transaksi.
@@ -374,20 +411,26 @@ Commit secara bertahap dengan pesan yang jelas, misalnya `competition: tambah en
 5. **Uji endpoint modul**, untuk kasus berhasil maupun gagal. Contoh dengan PowerShell:
    ```powershell
    # Create -> 201
-   Invoke-RestMethod -Method Post -Uri http://localhost:8080/competitions -ContentType 'application/json' -Body '{"name":"Turnamen A"}'
+   Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/competitions -ContentType 'application/json' -Body '{"name":"Turnamen A","participantType":"INDIVIDUAL"}'
    # Read -> 200
-   Invoke-RestMethod http://localhost:8080/competitions
-   Invoke-RestMethod http://localhost:8080/competitions/1
-   # Validasi gagal -> 400 (ProblemDetail)
-   Invoke-RestMethod -Method Post -Uri http://localhost:8080/competitions -ContentType 'application/json' -Body '{"name":""}'
-   # Data tidak ada -> 404 (ProblemDetail)
-   Invoke-RestMethod http://localhost:8080/competitions/9999
+   Invoke-RestMethod http://localhost:8080/api/competitions
+   Invoke-RestMethod http://localhost:8080/api/competitions/1
+   # Validasi gagal -> 400 { code: "VALIDATION_ERROR", message: "..." }
+   Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/competitions -ContentType 'application/json' -Body '{"name":"","participantType":"INDIVIDUAL"}'
+   # Data tidak ada -> 404 { code: "COMPETITION_NOT_FOUND", message: "..." }
+   Invoke-RestMethod http://localhost:8080/api/competitions/9999
    ```
    Postman atau HTTP Client di IntelliJ juga dapat dipakai.
 6. **Jalankan test** (PostgreSQL lokal harus berjalan):
    ```powershell
    .\gradlew.bat test
    ```
+
+#### API playground (opsional)
+
+Untuk demo dan pengujian manual, Spring Boot menyediakan API playground di `/`. Setelah backend dan PostgreSQL berjalan, buka `http://localhost:8080/` (sesuaikan port). Playground memakai API serta database yang sama dengan client lain dan menyediakan alur Competition, Participant, dan Match, termasuk tampilan bracket.
+
+Playground bukan fitur utama atau pengganti aplikasi Android. Implementasinya berada di `src/main/resources/static/` tanpa dependency frontend dan ikut dikemas ke JAR/Docker image. Setelah mengubah resource statis saat menjalankan aplikasi lewat IDE, jalankan `bash gradlew processResources` lalu refresh browser; build ulang diperlukan untuk JAR atau Docker image.
 
 ### Langkah 4 — Perbarui branch dengan `main` terbaru
 
@@ -427,12 +470,13 @@ Buka GitHub, buat Pull Request dari `feature/competition` ke `main`, lalu salin 
 
 ## Checklist
 - [ ] Branch sudah di-rebase ke `main` terbaru dan tidak ada konflik
+- [ ] Workflow CI pada PR ini berhasil (tanda centang hijau)
 - [ ] `gradlew bootJar` berhasil
 - [ ] `docker compose -f compose.local.yml up -d --build` berhasil dan container app `healthy`
 - [ ] `GET /system/status` mengembalikan `UP`
 - [ ] Endpoint modul diuji untuk kasus berhasil dan gagal (400/404)
 - [ ] Migration baru memakai nomor versi yang belum terpakai; migration lama tidak diubah
-- [ ] Kode diletakkan sesuai layer (controller/service/repository/domain/dto/exception)
+- [ ] Kode diletakkan sesuai layer (controller/service/repository/model/dto/exception)
 - [ ] Tidak ada file rahasia (`.env*`, kredensial) yang ikut di-commit
 - [ ] Tidak ada perubahan file bersama tanpa kesepakatan tim
 ```
@@ -440,7 +484,7 @@ Buka GitHub, buat Pull Request dari `feature/competition` ke `main`, lalu salin 
 ### Langkah 7 — Review oleh anggota lain
 
 - PR wajib mendapat **minimal 1 approval dari anggota lain**. Penulis PR tidak me-merge PR-nya sendiri tanpa approval.
-- Reviewer memeriksa kesesuaian dengan aturan layer (bagian 2), transaksi RW/RO, migration, dan checklist. Bila perlu, reviewer menjalankan branch tersebut di lokal:
+- Reviewer memastikan workflow **CI** pada PR berhasil, lalu memeriksa kesesuaian dengan aturan layer (bagian 2), batas transaksi, migration, dan checklist. Perubahan pada `.github/workflows/` harus di-review dengan sangat teliti karena workflow deploy memegang akses SSH ke server dan password database. Bila perlu, reviewer menjalankan branch tersebut di lokal:
   ```powershell
   git fetch origin
   git switch feature/competition
@@ -462,7 +506,7 @@ Buka GitHub, buat Pull Request dari `feature/competition` ke `main`, lalu salin 
 2. Setelah mendapat approval, PR di-merge; `deploy` di-deploy ke production.
 3. Verifikasi `https://api.vispro.satryo.pro/production/system/status` dan endpoint yang dirilis.
 
-> Deploy otomatis pada Langkah 8 dan 9 berlaku setelah workflow GitHub Actions tersedia. Sebelum itu, deploy dilakukan manual oleh pemilik repository sesuai bagian *Deploy ke server* di [`HELP.md`](HELP.md).
+> Deploy pada Langkah 8 dan 9 berjalan otomatis melalui workflow **Deploy** (tab *Actions* di GitHub): test → build image → deploy di server → smoke test `/system/status`. Jika job **Test** atau **Build** gagal, tidak ada yang di-deploy dan versi sebelumnya tetap berjalan. Jika job **Deploy** gagal, container lama sudah diganti oleh container baru yang tidak sehat, sehingga environment tersebut perlu segera diperbaiki atau di-rollback. Detail di bagian *CI/CD* pada [`HELP.md`](HELP.md).
 
 ### Ringkasan alur
 
@@ -482,6 +526,5 @@ feature/<modul> ──PR (1 approval)──► main ──auto deploy──► /
 | `Migration checksum mismatch` | File migration yang sudah diterapkan diubah | Jangan ubah migration yang sudah di-merge; buat migration baru. Di lokal, reset database dengan `down -v` |
 | `Schema-validation: missing table` / `missing column` | Entity tidak sesuai dengan tabel hasil migration | Samakan entity dengan migration, atau tambahkan migration baru |
 | Container app `unhealthy` | Aplikasi gagal start atau database tidak terjangkau | `docker compose -f compose.local.yml logs app` |
-| `port is already allocated` | Port 5432 atau 8080 sudah dipakai program lain | Ubah `POSTGRES_PORT` / `APP_PORT` di `.env` (dan `DB_RW_URL`/`DB_RO_URL` bila port PostgreSQL berubah) |
+| `port is already allocated` | Port 5432 atau 8080 sudah dipakai program lain | Ubah `POSTGRES_PORT` / `APP_PORT` di `.env` (dan `DB_URL` bila port PostgreSQL berubah) |
 | `gradlew bootJar` gagal karena versi Java | JDK 25 belum terpasang | Install JDK 25, atau cukup build lewat `docker compose ... up -d --build` |
-| Data yang baru dibuat tidak muncul saat langsung dibaca | Pembacaan berjalan di transaksi read-only terpisah (database RO) | Lakukan penulisan dan pembacaan dalam satu method `@Transactional` |

@@ -1,0 +1,6 @@
+name: Mini Competition Manager - Local
+values:
+  - key: host
+    value: 'http://localhost:8080'
+    enabled: true
+    type: default

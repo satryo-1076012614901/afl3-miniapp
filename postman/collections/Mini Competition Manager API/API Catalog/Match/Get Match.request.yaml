@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{host}}/api/competitions/{{competitionId}}/matches/{{matchId}}"
+method: GET
+order: 3000

@@ -14,18 +14,11 @@ data class SystemStatusResponse(
 )
 
 data class DatabaseStatus(
-    val readWrite: DatabaseEndpointStatus,
-    val readOnly: DatabaseEndpointStatus,
-)
-
-data class DatabaseEndpointStatus(
     val status: HealthStatus,
     val latencyMs: Long,
     val database: String? = null,
     val schema: String? = null,
     val serverVersion: String? = null,
-    val readOnlyTransaction: Boolean? = null,
-    val inRecovery: Boolean? = null,
     /** Nama kelas penyebab kegagalan (tanpa pesan detail agar informasi internal tidak terekspos). */
     val error: String? = null,
 )

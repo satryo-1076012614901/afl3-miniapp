@@ -1,0 +1,154 @@
+# Deploy otomatis:
+#   push ke main   -> https://api.vispro.satryo.pro/develop    (schema develop)
+#   push ke deploy -> https://api.vispro.satryo.pro/production (schema production)
+#
+# Seluruh job berjalan di runner GitHub. Job deploy menjalankan `docker compose` terhadap Docker daemon
+# di node melalui SSH (DOCKER_HOST=ssh://...), sehingga tidak ada file compose, file env, atau kredensial
+# GHCR yang disimpan di node. Nilai env berasal dari GitHub Secrets/Variables (lihat HELP.md, bagian CI/CD).
+name: Deploy
+
+on:
+  push:
+    branches: [main, deploy]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/satryo-1076012614901/afl3-miniapp
+  API_HOST: api.vispro.satryo.pro
+  DB_URL: jdbc:postgresql://db.vispro.satryo.pro:5432/miniapp_db
+
+jobs:
+  test:
+    name: Test
+    if: github.ref_name == 'main' || github.ref_name == 'deploy'
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build dan push image
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      environment: ${{ steps.target.outputs.environment }}
+      secret_prefix: ${{ steps.target.outputs.secret_prefix }}
+    steps:
+      - name: Tentukan environment dari branch
+        id: target
+        run: |
+          case "$GITHUB_REF_NAME" in
+            main)   target=develop ;;
+            deploy) target=production ;;
+            *) echo "Branch $GITHUB_REF_NAME tidak memiliki target deploy" >&2; exit 1 ;;
+          esac
+          echo "environment=$target" >> "$GITHUB_OUTPUT"
+          echo "secret_prefix=${target^^}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # :sha-<commit> dipakai job deploy (deterministik, dapat di-rollback dengan re-run job);
+      # :develop / :production dipakai untuk deploy manual dari laptop.
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+            ${{ env.IMAGE }}:${{ steps.target.outputs.environment }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy ${{ needs.build.outputs.environment }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    env:
+      APP_ENV: ${{ needs.build.outputs.environment }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Siapkan koneksi SSH ke node
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.NODE_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.NODE_SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ vars.NODE_SSH_HOST }}
+          SSH_USER: ${{ vars.NODE_SSH_USER }}
+          SSH_PORT: ${{ vars.NODE_SSH_PORT || '22' }}
+        run: |
+          for v in SSH_PRIVATE_KEY SSH_KNOWN_HOSTS SSH_HOST SSH_USER; do
+            [ -n "${!v}" ] || { echo "Secret/variable untuk $v belum di-set (lihat HELP.md, bagian CI/CD)" >&2; exit 1; }
+          done
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/afl3_deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          {
+            echo "Host afl3-node"
+            echo "  HostName $SSH_HOST"
+            echo "  User $SSH_USER"
+            echo "  Port $SSH_PORT"
+            echo "  IdentityFile ~/.ssh/afl3_deploy"
+            echo "  IdentitiesOnly yes"
+            echo "  StrictHostKeyChecking yes"
+          } > ~/.ssh/config
+          chmod 600 ~/.ssh/afl3_deploy ~/.ssh/config
+
+      - name: Periksa akses Docker di node
+        env:
+          DOCKER_HOST: ssh://afl3-node
+        run: |
+          docker version --format 'Docker daemon node: {{.Server.Version}}'
+
+      # Kredensial disimpan di runner; saat pull, kredensial ini diteruskan ke daemon node,
+      # sehingga node tidak perlu (dan tidak menyimpan) login GHCR.
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # --wait: gagal bila container tidak mencapai status healthy dalam 180 detik.
+      - name: Jalankan container di node
+        env:
+          DOCKER_HOST: ssh://afl3-node
+          COMPOSE_PROJECT_NAME: afl3-${{ needs.build.outputs.environment }}
+          APP_IMAGE: ${{ env.IMAGE }}:sha-${{ github.sha }}
+          APP_MEM_LIMIT: ${{ vars.APP_MEM_LIMIT || '768m' }}
+          DB_SCHEMA: ${{ needs.build.outputs.environment }}
+          DB_USERNAME: afl3_${{ needs.build.outputs.environment }}
+          DB_PASSWORD: ${{ secrets[format('{0}_DB_PASSWORD', needs.build.outputs.secret_prefix)] }}
+        run: docker compose -f compose.server.yml up -d --wait --wait-timeout 180
+
+      # Diuji dari luar node melalui URL publik (DNS, TLS, Traefik, aplikasi, dan database sekaligus).
+      # Retry memberi waktu Traefik mendeteksi container baru dan menerbitkan sertifikat pada deploy pertama.
+      - name: Smoke test /system/status
+        run: |
+          curl -fsS --retry 12 --retry-delay 5 --retry-all-errors \
+            "https://$API_HOST/$APP_ENV/system/status"
+
+      - name: Hapus image aplikasi yang tidak lagi dipakai di node
+        if: success()
+        env:
+          DOCKER_HOST: ssh://afl3-node
+        run: docker image prune -a -f --filter "label=org.opencontainers.image.source=https://github.com/satryo-1076012614901/afl3-miniapp"
